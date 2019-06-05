@@ -10,9 +10,12 @@ pub struct BlockHeader {
 	pub version: u32,
 	pub previous_header_hash: H256,
 	pub merkle_root_hash: H256,
+	pub coded_merkle_hashes: Vec<H256>, //hashes of the symbols on the top layer of coded merkle tree
 	pub time: u32,
 	pub bits: Compact,
 	pub nonce: u32,
+	pub dimension: u32, //number of symbols in the block
+	pub code: //parity check matrix of the sparse code
 }
 
 impl BlockHeader {

@@ -6,6 +6,8 @@ use {BlockHeader, Transaction};
 use hash::H256;
 #[cfg(any(test, feature = "test-helpers"))]
 use merkle_root::merkle_root;
+//#[cfg(any(test, feature = "test-helpers"))]
+use coded_merkle_roots::coded_merkle_roots;
 
 #[derive(Debug, PartialEq, Clone, Serializable, Deserializable)]
 pub struct Block {
@@ -43,6 +45,13 @@ impl Block {
 			},
 		};
 		merkle_root(&hashes)
+	}
+
+	// Returns hashes of the symbols on the top layer of coded Merkle tree 
+	//#[cfg(any(test, feature = "test-helpers"))]
+	pub fn coded_merkle_roots(&self) -> Vec<H256> {
+		let hashes = self.transactions.iter().map(Transaction::hash).collect::<Vec<H256>>();
+		coded_merkle_roots(&symbols)
 	}
 
 	pub fn transactions(&self) -> &[Transaction] {
