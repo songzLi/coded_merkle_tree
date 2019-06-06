@@ -2,6 +2,27 @@ use crypto::dhash256;
 use hash::{H256, H512};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
+//size of a symbol on the base layer in bytes
+pub const SYMBOL_SIZE: u32 = 256;
+
+//define the data type for a symbol on the base layer
+pub struct Symbol([u8;SYMBOL_SIZE]);
+
+fn pad(symbols: &[Symbol], rate: f32, agg: u32) -> Vec<Symbol> {
+	let mut data = symbols.to_vec();
+	let med = data.len();
+	let mut x = 1.0;
+	while x * rate < med {
+		x *= rate*agg; 
+	}
+	let difference = x*rate - med as u64
+	for i in 0..difference {
+		data.push(Symbol(0x00 * SYMBOL_SIZE));        
+	}
+	data
+}
+
+
 #[inline]
 fn concat<T>(a: T, b: T) -> H512 where T: AsRef<H256> {
 	let mut result = H512::default();
@@ -12,7 +33,11 @@ fn concat<T>(a: T, b: T) -> H512 where T: AsRef<H256> {
 
 /// Calculates the root of the merkle tree
 /// https://en.bitcoin.it/wiki/Protocol_documentation#Merkle_Trees
-pub fn coded_merkle_root<T: AsRef<H256> + Sync>(hashes: &[T]) -> Vec<H256>{
+pub fn coded_merkle_roots(symbols: &[Symbol], headerSize: u32, ) -> Vec<H256> {
+    symbols = pad(data);
+
+
+
 	if hashes.len() == 1 {
 		return hashes[0].as_ref().clone();
 	}
@@ -37,6 +62,7 @@ pub fn coded_merkle_root<T: AsRef<H256> + Sync>(hashes: &[T]) -> Vec<H256>{
 	}
 	merkle_root(&res)
 }
+
 
 /// Calculate merkle tree node hash
 pub fn merkle_node_hash<T>(left: T, right: T) -> H256 where T: AsRef<H256> {
