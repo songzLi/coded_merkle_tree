@@ -15,7 +15,7 @@ pub struct BlockHeader {
 	pub bits: Compact,
 	pub nonce: u32,
 	pub dimension: u32, //number of symbols in the block
-	pub code: //parity check matrix of the sparse code
+	//pub code: //parity check matrix of the sparse code
 }
 
 impl BlockHeader {
