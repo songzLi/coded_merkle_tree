@@ -1,6 +1,6 @@
 use crypto::dhash256;
 use hash::H256;
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+//use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 //size of a symbol on the base layer in bytes
 pub const BASE_SYMBOL_SIZE: usize = 256;
@@ -24,13 +24,11 @@ fn computeHash(coded: &Symbols) -> Vec<H256> {
 	let mut roots = Vec::<H256>::new(); 
 	if let Symbols::Upper(layer) = coded {
         for i in 0..layer.len(){
-        	let mut sym = Vec::<u8>::new();
-        	let mut temp = Vec::<u8>::new();
+        	let mut sym = [0u8; 32 * AGGREGATE];
         	for j in 0..AGGREGATE {
-        		layer[i][j].copy_to(&temp);
-        		sym.extend(temp);
+        		let temp: [u8; 32] = layer[i][j].clone().into();
+        		sym[j * 32 .. (j+1) * 32].copy_from_slice(&temp);
         	}
-
         	roots.push(dhash256(&sym));
         }
 	} 
@@ -39,26 +37,26 @@ fn computeHash(coded: &Symbols) -> Vec<H256> {
 
 fn pad(symbols: &[SymbolBase], rate: f32) -> Vec<SymbolBase> {
 	let mut data = symbols.to_vec();
-	let med = data.len();
+	let med = data.len() as f32;
 	let mut x = 1.0;
 	while x * rate < med {
-		x *= rate * AGGREGATE; 
+		x *= rate * (AGGREGATE as f32); 
 	}
 	let difference = (x * rate - med) as u64;
-	for i in 0..difference {
+	for _i in 0..difference {
 		data.push([0x00;BASE_SYMBOL_SIZE]);        
 	}
 	data
 }
 
-pub fn encoding(data: &Symbols, rate: f32) -> Symbols{
+pub fn encoding(data: &Symbols, rate: f32) -> Symbols {
 	match data {
 		Symbols::Base(message) => {
-			let mut coded: Vec<SymbolBase> = Vec::with_capacity((message.len() / rate) as usize);
+			let mut coded: Vec<SymbolBase> = Vec::with_capacity(((message.len() as f32) / rate) as usize);
 			Symbols::Base(coded)
 		},
 		Symbols::Upper(message) => {
-			let mut coded: Vec<SymbolUp> = Vec::with_capacity((message.len() / rate) as usize);
+			let mut coded: Vec<SymbolUp> = Vec::with_capacity(((message.len() as f32) / rate) as usize);
 			Symbols::Upper(coded)
 		},
 	}
@@ -75,10 +73,11 @@ fn hashAggregate(coded: &Symbols, rate: f32) -> Symbols{
 				hashes.push(dhash256(&message[i]));
 			}
 		},
-		Symbols::Upper(message) => {
-			for i in 0..message.len() {
-				hashes.push(dhash256(&message[i]));
-			}
+		Symbols::Upper(_message) => {
+			// for i in 0..message.len() {
+			// 	hashes.push(dhash256(&message[i]));
+			// }
+			hashes = computeHash(&coded);
 		},
 	}
     // n is numbe of coded symbols/hashes
@@ -86,15 +85,18 @@ fn hashAggregate(coded: &Symbols, rate: f32) -> Symbols{
 	// k is the number of new symbols after aggregation 
 	let k = (n/AGGREGATE) as u32;
 
-	let mut new_data = Vec::with_capacity(k);
+	let mut new_data = Vec::with_capacity(k as usize);
 
 	for i in 0..k {
 		let mut new_symbol: SymbolUp = [H256::default();AGGREGATE];
-		for j in 0..((AGGREGATE * rate) as u32){
-			new_symbol[j] = hashes[((i * AGGREGATE * rate) as u32) + j].clone();
+		for j in 0..(((AGGREGATE as f32) * rate) as usize){
+			let index  = ((((i * (AGGREGATE as u32)) as f32) * rate) as u32) + (j as u32);
+			new_symbol[j] = hashes[index as usize].clone();
 		}
-		for k in 0..((AGGREGATE * (1 - rate)) as u32){
-			new_symbol[((AGGREGATE * rate) as u32) + k] = hashes[((n * rate + i * AGGREGATE * (1 - rate)) as u32) + k].clone();
+		for k in 0..(((AGGREGATE as f32) * (1.0 - rate)) as usize){
+			let index = (((n as f32) * rate + (i as f32) * (AGGREGATE as f32) * (1.0 - rate)) 
+				as u32) + (k as u32);
+			new_symbol[(((AGGREGATE as f32) * rate) as usize) + k] = hashes[index as usize].clone();
 		}
 		new_data.push(new_symbol);
 	}
@@ -102,31 +104,30 @@ fn hashAggregate(coded: &Symbols, rate: f32) -> Symbols{
 }
 
 /// Calculates the roots of the coded Merkle tree
-pub fn coded_merkle_roots(symbols: &[SymbolBase], headerSize: u32, rate: f32) -> (Vec<Symbols>, Vec<H256>) {
+pub fn coded_merkle_roots(symbols: &[SymbolBase], headerSize: u32, rate: f32) -> (Vec<H256>, Vec<Symbols>) {
     let data = pad(symbols, rate);
-    let n = (data.len() / rate) as u32;
-    let level = ((((n/headerSize) as f32).log2()/((rate * AGGREGATE) as f32).log2()) as u32) + 1;
+    let n = ((data.len() as f32) / rate) as u32;
+    let level = ((((n/headerSize) as f32).log2()/(rate * (AGGREGATE as f32)).log2()) as u32) + 1;
 
     //Coded merkle tree is a vector of symbols on each layer
-    let mut tree: Vec<Symbols> = Vec::with_capacity(level); 
+    let mut tree: Vec<Symbols> = Vec::with_capacity(level as usize); 
     // Construct the base layer
-    let coded_data = encoding(&data, rate);
+    let coded_data = encoding(&Symbols::Base(data), rate);
     tree.push(coded_data);
 
     // Construct upper layers
     for i in 0..(level-1) {
-    	let new_data: Symbols = hashAggregate(&tree[i]);
+    	let new_data: Symbols = hashAggregate(&tree[i as usize], rate);
     	tree.push(encoding(&new_data, rate));
     }
-
-    (tree, computeHash(&tree.last()))	
+    (computeHash(&tree[tree.len()-1]), tree)
 }
 
 
 #[cfg(test)]
 mod tests {
 	use hash::H256;
-	use super::merkle_root;
+	use super::coded_merkle_roots;
 
 	// block 80_000
 	// https://blockchain.info/block/000000000043a8c0fd1d6f726790caa2a406010d19efd2780db27bdbbd93baf6
