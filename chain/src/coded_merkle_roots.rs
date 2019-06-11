@@ -15,7 +15,7 @@ pub type SymbolBase = [u8; BASE_SYMBOL_SIZE];
 pub type SymbolUp = [H256; AGGREGATE];
 
 //a new type for a sequence of data symbols
-pub enum  Symbols{
+pub enum Symbols{
 	Base(Vec<SymbolBase>),
 	Upper(Vec<SymbolUp>),
 } 
@@ -24,7 +24,14 @@ fn computeHash(coded: &Symbols) -> Vec<H256> {
 	let mut roots = Vec::<H256>::new(); 
 	if let Symbols::Upper(layer) = coded {
         for i in 0..layer.len(){
-        	roots.push(dhash256(&layer[i]));
+        	let mut sym = Vec::<u8>::new();
+        	let mut temp = Vec::<u8>::new();
+        	for j in 0..AGGREGATE {
+        		layer[i][j].copy_to(&temp);
+        		sym.extend(temp);
+        	}
+
+        	roots.push(dhash256(&sym));
         }
 	} 
 	roots
