@@ -1,9 +1,7 @@
 use crypto::dhash256;
 use hash::H256;
+use constants::BASE_SYMBOL_SIZE;
 //use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-
-//size of a symbol on the base layer in bytes
-pub const BASE_SYMBOL_SIZE: usize = 256;
 
 //number if hashes to aggregate to form a new symbol on the upper layers of CMT
 pub const AGGREGATE: usize = 8;

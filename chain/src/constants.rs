@@ -23,3 +23,6 @@ pub const LOCKTIME_THRESHOLD: u32 = 500000000; // Tue Nov  5 00:53:20 1985 UTC
 
 /// Number of Satoshis in single coin
 pub const SATOSHIS_IN_COIN: u64 = 100_000_000;
+
+//size of a symbol on the base layer in bytes
+pub const BASE_SYMBOL_SIZE: usize = 256;

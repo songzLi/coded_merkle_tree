@@ -264,6 +264,10 @@ pub(crate) fn transaction_hash(transaction: &Transaction) -> H256 {
 	dhash256(&serialize(transaction))
 }
 
+pub(crate) fn transaction_bytes(transaction: &Transaction) -> [u8] {
+	serialize(transaction)
+}
+
 #[cfg(test)]
 mod tests {
 	use hash::H256;

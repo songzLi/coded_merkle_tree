@@ -1,12 +1,14 @@
 use hex::FromHex;
 use ser::{deserialize};
 use {BlockHeader, Transaction};
+use constants::BASE_SYMBOL_SIZE;
+use coded_merkle_roots::SymbolBase;
 
 #[cfg(any(test, feature = "test-helpers"))]
 use hash::H256;
 #[cfg(any(test, feature = "test-helpers"))]
 use merkle_root::merkle_root;
-//#[cfg(any(test, feature = "test-helpers"))]
+#[cfg(any(test, feature = "test-helpers"))]
 use coded_merkle_roots::coded_merkle_roots;
 
 #[derive(Debug, PartialEq, Clone, Serializable, Deserializable)]
@@ -48,9 +50,9 @@ impl Block {
 	}
 
 	// Returns hashes of the symbols on the top layer of coded Merkle tree 
-	//#[cfg(any(test, feature = "test-helpers"))]
-	pub fn coded_merkle_roots(&self) -> Vec<H256> {
-		let hashes = self.transactions.iter().map(Transaction::hash).collect::<Vec<H256>>();
+	#[cfg(any(test, feature = "test-helpers"))]
+	pub fn coded_merkle_roots(&self, header_size, rate) -> Vec<H256> {
+		let symbols = self.transactions.iter().map(Transaction::hash).collect::<Vec<H256>>();
 		coded_merkle_roots(&symbols)
 	}
 
