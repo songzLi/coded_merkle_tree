@@ -9,8 +9,8 @@ extern crate serialization_derive;
 
 pub mod constants;
 
-//mod block;
-//mod block_header;
+mod block;
+mod block_header;
 mod merkle_root;
 mod coded_merkle_roots;
 mod transaction;
@@ -23,9 +23,10 @@ mod indexed_transaction;
 
 pub use primitives::{hash, bytes, bigint, compact};
 
-//pub use block::Block;
-//pub use block_header::BlockHeader;
+pub use block::Block;
+pub use block_header::BlockHeader;
 pub use merkle_root::{merkle_root, merkle_node_hash};
+pub use coded_merkle_roots::{Symbols, SymbolBase, SymbolUp};
 pub use transaction::{Transaction, TransactionInput, TransactionOutput, OutPoint};
 
 pub use read_and_hash::{ReadAndHash, HashedData};

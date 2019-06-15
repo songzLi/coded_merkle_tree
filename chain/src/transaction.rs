@@ -116,6 +116,10 @@ impl Transaction {
 		transaction_hash(self)
 	}
 
+	pub fn bytes(&self) -> Bytes {
+		transaction_bytes(self)
+	}
+
 	pub fn witness_hash(&self) -> H256 {
 		dhash256(&serialize_with_flags(self, SERIALIZE_TRANSACTION_WITNESS))
 	}
@@ -264,7 +268,7 @@ pub(crate) fn transaction_hash(transaction: &Transaction) -> H256 {
 	dhash256(&serialize(transaction))
 }
 
-pub(crate) fn transaction_bytes(transaction: &Transaction) -> [u8] {
+pub(crate) fn transaction_bytes(transaction: &Transaction) -> Bytes {
 	serialize(transaction)
 }
 

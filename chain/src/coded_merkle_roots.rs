@@ -56,7 +56,7 @@ pub fn encoding(data: &Symbols, rate: f32) -> Symbols {
 			for _i in k..n {
 				coded.push([0x00; BASE_SYMBOL_SIZE]);
 			}
-			println!("{} symbols on this level.", coded.len());
+			//println!("{} symbols on this level.", coded.len());
 			Symbols::Base(coded)
 		},
 		Symbols::Upper(message) => {
@@ -66,7 +66,7 @@ pub fn encoding(data: &Symbols, rate: f32) -> Symbols {
 			for _i in k..n {
 				coded.push([H256::default(); AGGREGATE]);
 			}
-			println!("{} symbols on this level.", coded.len());
+			//println!("{} symbols on this level.", coded.len());
 			Symbols::Upper(coded)
 		},
 	}
