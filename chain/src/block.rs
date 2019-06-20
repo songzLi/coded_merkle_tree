@@ -16,6 +16,7 @@ use coded_merkle_roots::coded_merkle_roots;
 pub struct Block {
 	pub block_header: BlockHeader,
 	pub transactions: Vec<Transaction>,
+	pub coded_merkle_tree: Vec<Symbols>,
 }
 
 impl From<&'static str> for Block {
@@ -26,7 +27,9 @@ impl From<&'static str> for Block {
 
 impl Block {
 	pub fn new(header: BlockHeader, transactions: Vec<Transaction>) -> Self {
-		Block { block_header: header, transactions: transactions }
+		let block = Block { block_header: header, transactions: transactions, coded_merkle_tree: Vec::<Symbols>::new()};
+		let (_, _, tree) = block.coded_merkle_roots(header.coded_merkle_roots_hashes.len(), header.rate);
+		Block { block_header: header, transactions: transactions, coded_merkle_tree: tree}
 	}
 
 	/// Returns block's merkle root.
@@ -75,6 +78,17 @@ impl Block {
 		let (roots, tree) = coded_merkle_roots(&symbols, header_size, rate);
 		(original_size, roots, tree)
 	}
+
+	//Returns a Merkle proof for some symbol index at some level of the coded merkle tree
+    //A proof for a particular symbol is a list of symbols in the upper levels
+	#[cfg(any(test, feature = "test-helpers"))]
+	pub fn proof(&self, lvl: u32, index: u32) -> Vec<SymbolUp> {
+		assert!(index >= 0 && index < self.coded_merkle_tree[lvl]);
+		
+
+
+	}
+
 
 	pub fn transactions(&self) -> &[Transaction] {
 		&self.transactions
