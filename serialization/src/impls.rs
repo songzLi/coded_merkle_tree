@@ -30,6 +30,18 @@ impl Serializable for i32 {
 	}
 }
 
+impl Serializable for f32 {
+	#[inline]
+	fn serialize(&self, s: &mut Stream) {
+		s.write_f32::<LittleEndian>(*self).unwrap();
+	}
+
+	#[inline]
+	fn serialized_size(&self) -> usize {
+		4
+	}
+}
+
 impl Serializable for i64 {
 	#[inline]
 	fn serialize(&self, s: &mut Stream) {
@@ -108,6 +120,14 @@ impl Deserializable for i32 {
 		Ok(try!(reader.read_i32::<LittleEndian>()))
 	}
 }
+
+impl Deserializable for f32 {
+	#[inline]
+	fn deserialize<T>(reader: &mut Reader<T>) -> Result<Self, Error> where T: io::Read {
+		Ok(try!(reader.read_f32::<LittleEndian>()))
+	}
+}
+
 
 impl Deserializable for i64 {
 	#[inline]
