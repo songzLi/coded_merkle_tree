@@ -1,15 +1,18 @@
 use crypto::dhash256;
 use hash::H256;
 use constants::BASE_SYMBOL_SIZE;
-//use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use ser::{Serializable, Deserializable, deserialize, serialize};
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 //number if hashes to aggregate to form a new symbol on the upper layers of CMT
 pub const AGGREGATE: usize = 8;
 
 //define the data type for a symbol on the base layer
+//#[derive(Serializable)]
 pub type SymbolBase = [u8; BASE_SYMBOL_SIZE];
 
 //define the data type for a symbol on the upper layers
+//#[derive(Serializable)]
 pub type SymbolUp = [H256; AGGREGATE];
 
 //a new type for a sequence of data symbols
@@ -110,7 +113,7 @@ fn hash_aggregate(coded: &Symbols, rate: f32) -> Symbols{
 	Symbols::Upper(new_data)
 }
 
-/// Calculates the roots of the coded Merkle tree
+// Calculates the roots of the coded Merkle tree
 pub fn coded_merkle_roots(symbols: &[SymbolBase], header_size: u32, rate: f32) -> (Vec<H256>, Vec<Symbols>) {
     let data = pad(symbols, rate);
     let n = ((data.len() as f32) / rate) as u32;

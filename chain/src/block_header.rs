@@ -27,6 +27,7 @@ impl BlockHeader {
 }
 
 impl fmt::Debug for BlockHeader {
+	//Not quite sure what is the goal of having this function
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_struct("BlockHeader")
 			.field("version", &self.version)
@@ -35,7 +36,7 @@ impl fmt::Debug for BlockHeader {
 			.field("time", &self.time)
 			.field("bits", &self.bits)
 			.field("nonce", &self.nonce)
-			.field("coded_merkle_roots_hashes", &self.coded_merkle_roots_hashes.reversed())
+			//.field("coded_merkle_roots_hashes", &self.coded_merkle_roots_hashes.reversed())
 			.field("rate", &self.rate)
 			.finish()
 	}
