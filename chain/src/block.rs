@@ -120,7 +120,6 @@ impl Block {
 		proof
 	}
 
-
 	pub fn transactions(&self) -> &[Transaction] {
 		&self.transactions
 	}

@@ -4,6 +4,9 @@ use ser::{deserialize, serialize};
 use crypto::dhash256;
 use compact::Compact;
 use hash::H256;
+use constants::BASE_SYMBOL_SIZE;
+use coded_merkle_roots::AGGREGATE;
+use {Symbols, SymbolBase, SymbolUp};
 
 #[derive(PartialEq, Clone, Serializable, Deserializable)]
 pub struct BlockHeader {
@@ -19,15 +22,22 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
-	/// Compute hash of the block header.
+	// Compute hash of the block header.
 	#[cfg(any(test, feature = "test-helpers"))]
 	pub fn hash(&self) -> H256 {
 		block_header_hash(self)
 	}
+
+	// Verify a Merkle proof using the hashes in the block header
+	#[cfg(any(test, feature = "test-helpers"))]
+	pub fn verify(&self, lvl: u8, index: u8, proof: Vec<SymbolUp>) -> bool {
+
+	}
+
 }
 
 impl fmt::Debug for BlockHeader {
-	//Not quite sure what is the goal of having this function
+	//Not quite sure what is the goal of having this function.
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_struct("BlockHeader")
 			.field("version", &self.version)
@@ -48,7 +58,7 @@ impl From<&'static str> for BlockHeader {
 	}
 }
 
-/// Compute hash of the block header.
+// Compute hash of the block header.
 pub(crate) fn block_header_hash(block_header: &BlockHeader) -> H256 {
 	dhash256(&serialize(block_header))
 }
