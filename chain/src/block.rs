@@ -6,13 +6,9 @@ use constants::BASE_SYMBOL_SIZE;
 use {Symbols, SymbolBase, SymbolUp};
 use bytes::Bytes;
 use coded_merkle_roots::AGGREGATE;
-
-#[cfg(any(test, feature = "test-helpers"))]
-use hash::H256;
-#[cfg(any(test, feature = "test-helpers"))]
-use merkle_root::merkle_root;
-#[cfg(any(test, feature = "test-helpers"))]
 use coded_merkle_roots::coded_merkle_roots;
+use hash::H256;
+use merkle_root::merkle_root;
 
 #[derive(Debug, PartialEq, Clone, Serializable, Deserializable)]
 pub struct Block {
@@ -21,12 +17,12 @@ pub struct Block {
 	//pub coded_merkle_tree: Vec<Symbols>,
 }
 
-fn next_index(index: u8, k: u8, reduce_factor: u8) -> u8 {
+pub fn next_index(index: u32, k: u32, reduce_factor: u32) -> u32 {
 	if index <= k - 1 {
 		index / reduce_factor
 	}
 	else {
-		(index - k) / ((AGGREGATE as u8) - reduce_factor)
+		(index - k) / ((AGGREGATE as u32) - reduce_factor)
 	}
 }
 
@@ -65,7 +61,7 @@ impl Block {
 	}
 
 	//Returns hashes of the symbols on the top layer of coded Merkle tree 
-	#[cfg(any(test, feature = "test-helpers"))]
+	//#[cfg(any(test, feature = "test-helpers"))]
 	pub fn coded_merkle_roots(&self, header_size: u32, rate: f32) -> (usize, Vec<H256>, Vec<Symbols>) {
 		let mut trans_byte = self.transactions.iter().map(Transaction::bytes).collect::<Vec<Bytes>>();
 		let mut data: Vec<u8> = vec![];
@@ -92,28 +88,28 @@ impl Block {
 
 	//Returns a Merkle proof for some symbol index at some level of the coded merkle tree
     //A proof for a particular symbol is a list of symbols in the upper levels
-	#[cfg(any(test, feature = "test-helpers"))]
-	pub fn merkle_proof(&self, lvl: u32, index: u32) -> Vec<SymbolUp> {
+	//#[cfg(any(test, feature = "test-helpers"))]
+	pub fn merkle_proof(&self, lvl: usize, index: u32) -> Vec<SymbolUp> {
 		//Construct the coded Merkle tree
 		let header_size = self.block_header.coded_merkle_roots_hashes.len();
-		let (_, _, tree) = self.coded_merkle_roots(header_size, self.block_header.rate);
+		let (_, _, tree) = self.coded_merkle_roots((header_size as u32), self.block_header.rate);
 
 		let mut proof = Vec::<SymbolUp>::new();
 		let mut moving_index = index;
 		let mut moving_k = 0;
-		let reduce_factor = (AGGREGATE * self.block_header.rate) as u8;
-		match self.coded_merkle_tree[lvl] {
+		let reduce_factor = ((AGGREGATE as f32) * self.block_header.rate) as u32;
+		match &tree[lvl] {
 			Symbols::Base(syms) => {
-				moving_k = (syms.len() * self.block_header.rate) as u8;
+				moving_k = ((syms.len() as f32) * self.block_header.rate) as u32;
 			}
 			Symbols::Upper(syms) => {
-				moving_k = (syms.len() * self.block_header.rate) as u8;
+				moving_k = ((syms.len() as f32) * self.block_header.rate) as u32;
 			}
 		}
-		for i in lvl..(self.coded_merkle_tree.len() - 1) {
+		for i in lvl..(tree.len() - 1) {
 			moving_index = next_index(moving_index, moving_k, reduce_factor);
-            if let Symbols::Upper(syms) = self.coded_merkle_tree[i + 1] {
-                proof.push(syms[moving_index]);
+            if let Symbols::Upper(syms) = &tree[i + 1] {
+                proof.push(syms[(moving_index as usize)]);
             }
             moving_k = moving_k / reduce_factor;
 		}

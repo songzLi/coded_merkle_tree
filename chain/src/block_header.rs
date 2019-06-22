@@ -7,6 +7,7 @@ use hash::H256;
 use constants::BASE_SYMBOL_SIZE;
 use coded_merkle_roots::AGGREGATE;
 use {Symbols, SymbolBase, SymbolUp};
+use block::next_index;
 
 #[derive(PartialEq, Clone, Serializable, Deserializable)]
 pub struct BlockHeader {
@@ -18,6 +19,7 @@ pub struct BlockHeader {
 	pub nonce: u32,
 	pub coded_merkle_roots_hashes: Vec<H256>,//hashes of the symbols on the top layer of coded Merkle tree
 	pub rate: f32, //coding rate to construct coded Merkle tree
+	pub block_size: u32, // number of systematic symbols in the block 
 	//pub code: //parity check matrix of the sparse code
 }
 
@@ -28,12 +30,83 @@ impl BlockHeader {
 		block_header_hash(self)
 	}
 
-	// Verify a Merkle proof using the hashes in the block header
-	#[cfg(any(test, feature = "test-helpers"))]
-	pub fn verify(&self, lvl: u8, index: u8, proof: Vec<SymbolUp>) -> bool {
+	// Verify the Merkle proof of an upper symbol using the hashes in the block header
+	//#[cfg(any(test, feature = "test-helpers"))]
+	pub fn verify_up(&self, symbol: SymbolUp, lvl: u32, index: u32, proof: &Vec<SymbolUp>) -> bool {
+		let reduce_factor = ((AGGREGATE as f32) * self.rate) as u32;
+		let mut current_symbol = symbol;
+		let mut current_index = index;
+		let mut current_lvl = lvl;
+		let mut current_k = self.block_size / u32::pow(reduce_factor, lvl);
 
-	}
+		for s in proof.iter() {
+			let mut hash_index = 0;
+			// current symbol is a systematic symbol
+			if current_index <= current_k - 1 {
+				hash_index = current_index % reduce_factor;
+			}
+			// current symbol is a parity symbol
+			else {
+				hash_index = (current_index - current_k) % ((AGGREGATE as u32) -
+                                                       reduce_factor) + reduce_factor;
+			}
 
+            //convert a symbol to a byte stream
+			let mut sym = [0u8; 32 * AGGREGATE];
+        	for j in 0..AGGREGATE {
+        		let temp: [u8; 32] = current_symbol[j].clone().into();
+        		sym[j * 32 .. (j+1) * 32].copy_from_slice(&temp);
+        	}
+
+			if dhash256(&sym) != s[(hash_index as usize)]{
+			    println!("Failed at level {} with symbol index {}.", current_lvl, current_index);
+                return false;
+			}
+			else {
+				current_symbol = *s;
+				current_index = next_index(current_index, current_k, reduce_factor);
+				current_k = current_k / reduce_factor;
+				current_lvl = current_lvl + 1;
+			}
+		}
+
+		let mut sym = [0u8; 32 * AGGREGATE];
+        for j in 0..AGGREGATE {
+        	let temp: [u8; 32] = current_symbol[j].clone().into();
+        	sym[j * 32 .. (j+1) * 32].copy_from_slice(&temp);
+        }
+
+        if dhash256(&sym) != self.coded_merkle_roots_hashes[(current_index as usize)] {
+        	println!("Failed at level {} with symbol index {}.", current_lvl, current_index);
+            false
+        } else{
+        	true
+        }
+    }
+
+    //#[cfg(any(test, feature = "test-helpers"))]
+	pub fn verify_base(&self, symbol: SymbolBase, index: u32, proof: &Vec<SymbolUp>) -> bool {
+		let reduce_factor = ((AGGREGATE as f32) * self.rate) as u32;
+		let mut hash_index = 0;
+			// current base symbol is a systematic symbol
+			if index <= self.block_size - 1 {
+				hash_index = index % reduce_factor;
+			}
+			// current base symbol is a parity symbol
+			else {
+				hash_index = (index - self.block_size) % ((AGGREGATE as u32) -
+                                                       reduce_factor) + reduce_factor;
+			}
+
+		if dhash256(&symbol) != proof[0][(hash_index as usize)]{
+			    println!("Failed at base level with symbol index {}.", index);
+                false
+			}
+			else {
+				self.verify_up(proof[0], 1, 
+					next_index(index, self.block_size, reduce_factor), &proof[1..].to_vec())
+			}
+		}
 }
 
 impl fmt::Debug for BlockHeader {
