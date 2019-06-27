@@ -23,7 +23,7 @@ mod indexed_transaction;
 
 pub use primitives::{hash, bytes, bigint, compact};
 
-pub use block::Block;
+pub use block::{Block, CodingErr};
 pub use block_header::BlockHeader;
 pub use merkle_root::{merkle_root, merkle_node_hash};
 pub use coded_merkle_roots::{Symbols, SymbolBase, SymbolUp};

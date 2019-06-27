@@ -17,6 +17,13 @@ pub struct Block {
 	//pub coded_merkle_tree: Vec<Symbols>,
 }
 
+//a new type for a coding errors
+pub enum CodingErr{
+	NotZero,
+	NotHash,
+} 
+
+
 pub fn next_index(index: u32, k: u32, reduce_factor: u32) -> u32 {
 	if index <= k - 1 {
 		index / reduce_factor

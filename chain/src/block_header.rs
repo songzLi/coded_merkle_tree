@@ -8,6 +8,7 @@ use constants::BASE_SYMBOL_SIZE;
 use coded_merkle_roots::AGGREGATE;
 use {Symbols, SymbolBase, SymbolUp};
 use block::next_index;
+use CodingErr;
 
 #[derive(PartialEq, Clone, Serializable, Deserializable)]
 pub struct BlockHeader {
@@ -107,10 +108,34 @@ impl BlockHeader {
 					next_index(index, self.block_size, reduce_factor), &proof[1..].to_vec())
 			}
 		}
+
+
+    //Verify that a malicious block producer does not do coding correctly, return true if the verification passes, or the coding is not correct
+	pub fn verify_incorrect_coding(proof: Symbols, lvl: u32, index: Vec<u32>, merkle_proofs: Vec<Vec<SymbolUp>>, error_type: CodingErr) -> bool {
+		match proof {
+			Symbols::Base(err_symbols) => {
+				// first check the Merkle proofs of all symbols in the incorrect-coding proof
+				for i in 0..index {
+					if !self.verify_base(err_symbols[i], index[i], &merkle_proofs[i]) {
+						return true;
+					}
+				}
+				if error_type == NotZero {
+
+				} else {
+
+				}
+			}
+			Symbols::Upper(err_symbols) => {
+
+			}
+		}
+
+	}
 }
 
 impl fmt::Debug for BlockHeader {
-	//Not quite sure what is the goal of having this function.
+	//Not quite sure what is this function trying to do.
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_struct("BlockHeader")
 			.field("version", &self.version)
@@ -139,9 +164,11 @@ pub(crate) fn block_header_hash(block_header: &BlockHeader) -> H256 {
 #[cfg(test)]
 mod tests {
 	use ser::{Reader, Error as ReaderError, Stream};
-	use super::BlockHeader;
+	//use super::BlockHeader;
+	use super::*;
 
 	#[test]
+	#[ignore]
 	fn test_block_header_stream() {
 		let block_header = BlockHeader {
 			version: 1,
@@ -150,6 +177,9 @@ mod tests {
 			time: 4,
 			bits: 5.into(),
 			nonce: 6,
+			coded_merkle_roots_hashes: vec![H256::default();4].into(),
+			rate: 0.25,
+			block_size: 1024, 
 		};
 
 		let mut stream = Stream::default();
@@ -162,12 +192,19 @@ mod tests {
 			4, 0, 0, 0,
 			5, 0, 0, 0,
 			6, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0.25, 0, 0, 0,
+			1024, 0, 0,
 		].into();
 
 		assert_eq!(stream.out(), expected);
 	}
 
 	#[test]
+	#[ignore]
 	fn test_block_header_reader() {
 		let buffer = vec![
 			1, 0, 0, 0,
