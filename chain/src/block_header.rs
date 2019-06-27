@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::BitXor;
 use hex::FromHex;
 use ser::{deserialize, serialize};
 use crypto::dhash256;
@@ -111,26 +112,110 @@ impl BlockHeader {
 
 
     //Verify that a malicious block producer does not do coding correctly, return true if the verification passes, or the coding is not correct
-	pub fn verify_incorrect_coding(proof: Symbols, lvl: u32, index: Vec<u32>, merkle_proofs: Vec<Vec<SymbolUp>>, error_type: CodingErr) -> bool {
+	pub fn verify_incorrect_coding(&self, proof: Symbols, lvl: u32, index: Vec<u32>, merkle_proofs: Vec<Vec<SymbolUp>>, error_type: CodingErr) -> bool {
 		match proof {
 			Symbols::Base(err_symbols) => {
 				// first check the Merkle proofs of all symbols in the incorrect-coding proof
-				for i in 0..index {
+				for i in 0..err_symbols.len() {
 					if !self.verify_base(err_symbols[i], index[i], &merkle_proofs[i]) {
-						return true;
+						println!("Invalid incorrect-coding proof. Merkle proof of a symbol does not pass.");
+						return false;
 					}
 				}
-				if error_type == NotZero {
-
-				} else {
-
+				match error_type {
+					NotZero => {
+						let sum = [0u8; BASE_SYMBOL_SIZE];
+						for j in 0..BASE_SYMBOL_SIZE {
+							for i in 0..err_symbols.len() {
+								sum[j].bitxor(err_symbols[i][j]);
+							}
+						}
+						for j in 0..BASE_SYMBOL_SIZE {
+							if sum[j] != 0u8 {
+								return true;
+							}
+						}
+						println!("Invalid incorrect-coding proof. Symbols sum up to zero.");
+						return false;
+					}
+					NotHash => {
+						let missing = [0u8; BASE_SYMBOL_SIZE];
+						for j in 0..BASE_SYMBOL_SIZE {
+							for i in 0..err_symbols.len() {
+								missing[j].bitxor(err_symbols[i][j]);
+							}
+						}
+						if !self.verify_base(missing, index[index.len()-1], &merkle_proofs[merkle_proofs.len()-1]) {
+						    return true;
+						} else {
+							println!("Invalid incorrect-coding proof. Decoded symbol passes Merkle proof verification.");
+						    return false;
+						}
+					}
 				}
 			}
 			Symbols::Upper(err_symbols) => {
+				// first check the Merkle proofs of all symbols in the incorrect-coding proof
+				for i in 0..err_symbols.len() {
+					if !self.verify_up(err_symbols[i], lvl, index[i], &merkle_proofs[i]) {
+						println!("Invalid incorrect-coding proof. Merkle proof of a symbol does not pass.");
+						return false;
+					}
+				}
+				let symbol_size = 32 * AGGREGATE;
+				match error_type {
+					NotZero => {
+						let sum = [0u8; 32 * AGGREGATE];
+						for i in 0..err_symbols.len() {
+							//Create a byte vector from an symbol on upper level
+							let mut sym = [0u8; 32 * AGGREGATE];
+							for k in 0..AGGREGATE {
+        	                    let temp: [u8; 32] = err_symbols[i][k].clone().into();
+        		                sym[k * 32 .. (k+1) * 32].copy_from_slice(&temp);
+        		            }
+							for j in 0..symbol_size {								
+								sum[j].bitxor(sym[j]);
+							}
+						}
+						for j in 0..symbol_size {
+							if sum[j] != 0u8 {
+								return true;
+							}
+						}
+						println!("Invalid incorrect-coding proof. Symbols sum up to zero.");
+						return false;
+					}
+					NotHash => {
+						let missing = [0u8; 32 * AGGREGATE];
+						for i in 0..err_symbols.len() {
+							//Create a byte vector from an symbol on upper level
+							let mut sym = [0u8; 32 * AGGREGATE];
+							for k in 0..AGGREGATE {
+        	                    let temp: [u8; 32] = err_symbols[i][k].clone().into();
+        		                sym[k * 32 .. (k+1) * 32].copy_from_slice(&temp);
+        		            }
+							for j in 0..symbol_size {								
+								missing[j].bitxor(sym[j]);
+							}
+						}
 
+						let mut decode = [H256::default(); AGGREGATE];
+						for k in 0..AGGREGATE {
+							let mut h = [0u8; 32];
+							h.copy_from_slice(&missing[k..k + 32]);
+							decode[k] = H256::from(h); 
+						}
+
+						if !self.verify_up(decode, lvl, index[index.len()-1], &merkle_proofs[merkle_proofs.len()-1]) {
+						    return true;
+						} else {
+							println!("Invalid incorrect-coding proof. Decoded symbol passes Merkle proof verification.");
+						    return false;
+						}
+					}
+				}
 			}
 		}
-
 	}
 }
 
