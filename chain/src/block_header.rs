@@ -5,8 +5,7 @@ use ser::{deserialize, serialize};
 use crypto::dhash256;
 use compact::Compact;
 use hash::H256;
-use constants::BASE_SYMBOL_SIZE;
-use coded_merkle_roots::AGGREGATE;
+use constants::{BASE_SYMBOL_SIZE, AGGREGATE, RATE};
 use {Symbols, SymbolBase, SymbolUp};
 use block::next_index;
 use CodingErr;
@@ -20,8 +19,6 @@ pub struct BlockHeader {
 	pub bits: Compact,
 	pub nonce: u32,
 	pub coded_merkle_roots_hashes: Vec<H256>,//hashes of the symbols on the top layer of coded Merkle tree
-	pub rate: f32, //coding rate to construct coded Merkle tree
-	pub block_size: u32, // number of systematic symbols in the block 
 	//pub code: //parity check matrix of the sparse code
 }
 
@@ -34,12 +31,12 @@ impl BlockHeader {
 
 	// Verify the Merkle proof of an upper symbol using the hashes in the block header
 	//#[cfg(any(test, feature = "test-helpers"))]
-	pub fn verify_up(&self, symbol: SymbolUp, lvl: u32, index: u32, proof: &Vec<SymbolUp>) -> bool {
-		let reduce_factor = ((AGGREGATE as f32) * self.rate) as u32;
+	pub fn verify_up(&self, symbol: SymbolUp, lvl: u32, index: u32, block_size: u32, proof: &Vec<SymbolUp>) -> bool {
+		let reduce_factor = ((AGGREGATE as f32) * RATE) as u32;
 		let mut current_symbol = symbol;
 		let mut current_index = index;
 		let mut current_lvl = lvl;
-		let mut current_k = self.block_size / u32::pow(reduce_factor, lvl);
+		let mut current_k = block_size / u32::pow(reduce_factor, lvl);
 
 		for s in proof.iter() {
 			let mut hash_index = 0;
@@ -87,16 +84,16 @@ impl BlockHeader {
     }
 
     //#[cfg(any(test, feature = "test-helpers"))]
-	pub fn verify_base(&self, symbol: SymbolBase, index: u32, proof: &Vec<SymbolUp>) -> bool {
-		let reduce_factor = ((AGGREGATE as f32) * self.rate) as u32;
+	pub fn verify_base(&self, symbol: SymbolBase, index: u32, block_size: u32, proof: &Vec<SymbolUp>) -> bool {
+		let reduce_factor = ((AGGREGATE as f32) * RATE) as u32;
 		let mut hash_index = 0;
 			// current base symbol is a systematic symbol
-			if index <= self.block_size - 1 {
+			if index <= block_size - 1 {
 				hash_index = index % reduce_factor;
 			}
 			// current base symbol is a parity symbol
 			else {
-				hash_index = (index - self.block_size) % ((AGGREGATE as u32) -
+				hash_index = (index - block_size) % ((AGGREGATE as u32) -
                                                        reduce_factor) + reduce_factor;
 			}
 
@@ -105,19 +102,19 @@ impl BlockHeader {
                 false
 			}
 			else {
-				self.verify_up(proof[0], 1, 
-					next_index(index, self.block_size, reduce_factor), &proof[1..].to_vec())
+				self.verify_up(proof[0], 1, next_index(index, block_size, reduce_factor), 
+					block_size, &proof[1..].to_vec())
 			}
 		}
 
 
     //Verify that a malicious block producer does not do coding correctly, return true if the verification passes, or the coding is not correct
-	pub fn verify_incorrect_coding(&self, proof: Symbols, lvl: u32, index: Vec<u32>, merkle_proofs: Vec<Vec<SymbolUp>>, error_type: CodingErr) -> bool {
+	pub fn verify_incorrect_coding(&self, proof: Symbols, lvl: u32, index: Vec<u32>, block_size: u32, merkle_proofs: Vec<Vec<SymbolUp>>, error_type: CodingErr) -> bool {
 		match proof {
 			Symbols::Base(err_symbols) => {
 				// first check the Merkle proofs of all symbols in the incorrect-coding proof
 				for i in 0..err_symbols.len() {
-					if !self.verify_base(err_symbols[i], index[i], &merkle_proofs[i]) {
+					if !self.verify_base(err_symbols[i], index[i], block_size, &merkle_proofs[i]) {
 						println!("Invalid incorrect-coding proof. Merkle proof of a symbol does not pass.");
 						return false;
 					}
@@ -145,7 +142,7 @@ impl BlockHeader {
 								missing[j].bitxor(err_symbols[i][j]);
 							}
 						}
-						if !self.verify_base(missing, index[index.len()-1], &merkle_proofs[merkle_proofs.len()-1]) {
+						if !self.verify_base(missing, index[index.len()-1], block_size, &merkle_proofs[merkle_proofs.len()-1]) {
 						    return true;
 						} else {
 							println!("Invalid incorrect-coding proof. Decoded symbol passes Merkle proof verification.");
@@ -157,7 +154,7 @@ impl BlockHeader {
 			Symbols::Upper(err_symbols) => {
 				// first check the Merkle proofs of all symbols in the incorrect-coding proof
 				for i in 0..err_symbols.len() {
-					if !self.verify_up(err_symbols[i], lvl, index[i], &merkle_proofs[i]) {
+					if !self.verify_up(err_symbols[i], lvl, index[i], block_size, &merkle_proofs[i]) {
 						println!("Invalid incorrect-coding proof. Merkle proof of a symbol does not pass.");
 						return false;
 					}
@@ -206,7 +203,7 @@ impl BlockHeader {
 							decode[k] = H256::from(h); 
 						}
 
-						if !self.verify_up(decode, lvl, index[index.len()-1], &merkle_proofs[merkle_proofs.len()-1]) {
+						if !self.verify_up(decode, lvl, index[index.len()-1], block_size, &merkle_proofs[merkle_proofs.len()-1]) {
 						    return true;
 						} else {
 							println!("Invalid incorrect-coding proof. Decoded symbol passes Merkle proof verification.");
@@ -230,7 +227,6 @@ impl fmt::Debug for BlockHeader {
 			.field("bits", &self.bits)
 			.field("nonce", &self.nonce)
 			//.field("coded_merkle_roots_hashes", &self.coded_merkle_roots_hashes.reversed())
-			.field("rate", &self.rate)
 			.finish()
 	}
 }
@@ -246,72 +242,72 @@ pub(crate) fn block_header_hash(block_header: &BlockHeader) -> H256 {
 	dhash256(&serialize(block_header))
 }
 
-#[cfg(test)]
-mod tests {
-	use ser::{Reader, Error as ReaderError, Stream};
-	//use super::BlockHeader;
-	use super::*;
+// #[cfg(test)]
+// mod tests {
+// 	use ser::{Reader, Error as ReaderError, Stream};
+// 	//use super::BlockHeader;
+// 	use super::*;
 
-	#[test]
-	#[ignore]
-	fn test_block_header_stream() {
-		let block_header = BlockHeader {
-			version: 1,
-			previous_header_hash: [2; 32].into(),
-			merkle_root_hash: [3; 32].into(),
-			time: 4,
-			bits: 5.into(),
-			nonce: 6,
-			coded_merkle_roots_hashes: vec![H256::default();4].into(),
-			rate: 0.25,
-			block_size: 1024, 
-		};
+// 	#[test]
+// 	#[ignore]
+// 	fn test_block_header_stream() {
+// 		let block_header = BlockHeader {
+// 			version: 1,
+// 			previous_header_hash: [2; 32].into(),
+// 			merkle_root_hash: [3; 32].into(),
+// 			time: 4,
+// 			bits: 5.into(),
+// 			nonce: 6,
+// 			coded_merkle_roots_hashes: vec![H256::default();4].into(),
+// 			rate: 0.25,
+// 			block_size: 1024, 
+// 		};
 
-		let mut stream = Stream::default();
-		stream.append(&block_header);
+// 		let mut stream = Stream::default();
+// 		stream.append(&block_header);
 
-		let expected = vec![
-			1, 0, 0, 0,
-			2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-			3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-			4, 0, 0, 0,
-			5, 0, 0, 0,
-			6, 0, 0, 0,
-			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			0.25, 0, 0, 0,
-			1024, 0, 0,
-		].into();
+// 		let expected = vec![
+// 			1, 0, 0, 0,
+// 			2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+// 			3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+// 			4, 0, 0, 0,
+// 			5, 0, 0, 0,
+// 			6, 0, 0, 0,
+// 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+// 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+// 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+// 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+// 			0.25, 0, 0, 0,
+// 			1024, 0, 0,
+// 		].into();
 
-		assert_eq!(stream.out(), expected);
-	}
+// 		assert_eq!(stream.out(), expected);
+// 	}
 
-	#[test]
-	#[ignore]
-	fn test_block_header_reader() {
-		let buffer = vec![
-			1, 0, 0, 0,
-			2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-			3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-			4, 0, 0, 0,
-			5, 0, 0, 0,
-			6, 0, 0, 0,
-		];
+// 	#[test]
+// 	#[ignore]
+// 	fn test_block_header_reader() {
+// 		let buffer = vec![
+// 			1, 0, 0, 0,
+// 			2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+// 			3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+// 			4, 0, 0, 0,
+// 			5, 0, 0, 0,
+// 			6, 0, 0, 0,
+// 		];
 
-		let mut reader = Reader::new(&buffer);
+// 		let mut reader = Reader::new(&buffer);
 
-		let expected = BlockHeader {
-			version: 1,
-			previous_header_hash: [2; 32].into(),
-			merkle_root_hash: [3; 32].into(),
-			time: 4,
-			bits: 5.into(),
-			nonce: 6,
-		};
+// 		let expected = BlockHeader {
+// 			version: 1,
+// 			previous_header_hash: [2; 32].into(),
+// 			merkle_root_hash: [3; 32].into(),
+// 			time: 4,
+// 			bits: 5.into(),
+// 			nonce: 6,
+// 		};
 
-		assert_eq!(expected, reader.read().unwrap());
-		assert_eq!(ReaderError::UnexpectedEnd, reader.read::<BlockHeader>().unwrap_err());
-	}
-}
+// 		assert_eq!(expected, reader.read().unwrap());
+// 		assert_eq!(ReaderError::UnexpectedEnd, reader.read::<BlockHeader>().unwrap_err());
+// 	}
+// }

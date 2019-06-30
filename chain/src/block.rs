@@ -2,10 +2,9 @@ use hex::FromHex;
 //use ser::{deserialize};
 use ser::{deserialize, serialize};
 use {BlockHeader, Transaction};
-use constants::BASE_SYMBOL_SIZE;
+use constants::{BASE_SYMBOL_SIZE, AGGREGATE, RATE};
 use {Symbols, SymbolBase, SymbolUp};
 use bytes::Bytes;
-use coded_merkle_roots::AGGREGATE;
 use coded_merkle_roots::coded_merkle_roots;
 use hash::H256;
 use merkle_root::merkle_root;
@@ -99,18 +98,18 @@ impl Block {
 	pub fn merkle_proof(&self, lvl: usize, index: u32) -> Vec<SymbolUp> {
 		//Construct the coded Merkle tree
 		let header_size = self.block_header.coded_merkle_roots_hashes.len();
-		let (_, _, tree) = self.coded_merkle_roots((header_size as u32), self.block_header.rate);
+		let (_, _, tree) = self.coded_merkle_roots((header_size as u32), RATE);
 
 		let mut proof = Vec::<SymbolUp>::new();
 		let mut moving_index = index;
 		let mut moving_k = 0;
-		let reduce_factor = ((AGGREGATE as f32) * self.block_header.rate) as u32;
+		let reduce_factor = ((AGGREGATE as f32) * RATE) as u32;
 		match &tree[lvl] {
 			Symbols::Base(syms) => {
-				moving_k = ((syms.len() as f32) * self.block_header.rate) as u32;
+				moving_k = ((syms.len() as f32) * RATE) as u32;
 			}
 			Symbols::Upper(syms) => {
-				moving_k = ((syms.len() as f32) * self.block_header.rate) as u32;
+				moving_k = ((syms.len() as f32) * RATE) as u32;
 			}
 		}
 		for i in lvl..(tree.len() - 1) {
@@ -142,7 +141,7 @@ mod tests {
 	use hash::H256;
 	use super::*;
 	use coded_merkle_roots::compute_hash;
-	use coded_merkle_roots::AGGREGATE;
+	use constants::AGGREGATE;
 	use std::cmp::Ordering;
 
 	// Block 80000

@@ -24,5 +24,15 @@ pub const LOCKTIME_THRESHOLD: u32 = 500000000; // Tue Nov  5 00:53:20 1985 UTC
 /// Number of Satoshis in single coin
 pub const SATOSHIS_IN_COIN: u64 = 100_000_000;
 
+
+//Configuration file for construction of coded Merkle tree
 //size of a symbol on the base layer in bytes
 pub const BASE_SYMBOL_SIZE: usize = 128;
+
+//number if hashes to aggregate to form a new symbol on the upper layers of CMT
+pub const AGGREGATE: usize = 8;
+
+//coding rate for code ensemble
+pub const RATE: f32 = 0.25;
+
+

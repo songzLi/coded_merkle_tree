@@ -1,11 +1,8 @@
 use crypto::dhash256;
 use hash::H256;
-use constants::BASE_SYMBOL_SIZE;
+use constants::{BASE_SYMBOL_SIZE, AGGREGATE, RATE};
 use ser::{Serializable, Deserializable, deserialize, serialize};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-
-//number if hashes to aggregate to form a new symbol on the upper layers of CMT
-pub const AGGREGATE: usize = 8;
 
 //define the data type for a symbol on the base layer
 //#[derive(Serializable)]
