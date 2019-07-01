@@ -19,7 +19,6 @@ pub struct BlockHeader {
 	pub bits: Compact,
 	pub nonce: u32,
 	pub coded_merkle_roots_hashes: Vec<H256>,//hashes of the symbols on the top layer of coded Merkle tree
-	//pub code: //parity check matrix of the sparse code
 }
 
 impl BlockHeader {
@@ -242,72 +241,73 @@ pub(crate) fn block_header_hash(block_header: &BlockHeader) -> H256 {
 	dhash256(&serialize(block_header))
 }
 
-// #[cfg(test)]
-// mod tests {
-// 	use ser::{Reader, Error as ReaderError, Stream};
-// 	//use super::BlockHeader;
-// 	use super::*;
+#[cfg(test)]
+mod tests {
+	use ser::{Reader, Error as ReaderError, Stream};
+	//use super::BlockHeader;
+	use super::*;
 
-// 	#[test]
-// 	#[ignore]
-// 	fn test_block_header_stream() {
-// 		let block_header = BlockHeader {
-// 			version: 1,
-// 			previous_header_hash: [2; 32].into(),
-// 			merkle_root_hash: [3; 32].into(),
-// 			time: 4,
-// 			bits: 5.into(),
-// 			nonce: 6,
-// 			coded_merkle_roots_hashes: vec![H256::default();4].into(),
-// 			rate: 0.25,
-// 			block_size: 1024, 
-// 		};
+	#[test]
+	fn test_block_header_stream() {
+		let block_header = BlockHeader {
+			version: 1,
+			previous_header_hash: [2; 32].into(),
+			merkle_root_hash: [3; 32].into(),
+			time: 4,
+			bits: 5.into(),
+			nonce: 6,
+			coded_merkle_roots_hashes: vec![H256::default(); 4],
+		};
 
-// 		let mut stream = Stream::default();
-// 		stream.append(&block_header);
+		let mut stream = Stream::default();
+		stream.append(&block_header);
 
-// 		let expected = vec![
-// 			1, 0, 0, 0,
-// 			2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-// 			3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-// 			4, 0, 0, 0,
-// 			5, 0, 0, 0,
-// 			6, 0, 0, 0,
-// 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-// 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-// 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-// 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-// 			0.25, 0, 0, 0,
-// 			1024, 0, 0,
-// 		].into();
+		let expected = vec![
+			1, 0, 0, 0,
+			2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+			3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+			4, 0, 0, 0,
+			5, 0, 0, 0,
+			6, 0, 0, 0,
+			4,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		].into();
 
-// 		assert_eq!(stream.out(), expected);
-// 	}
+		assert_eq!(stream.out(), expected);
+	}
 
-// 	#[test]
-// 	#[ignore]
-// 	fn test_block_header_reader() {
-// 		let buffer = vec![
-// 			1, 0, 0, 0,
-// 			2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-// 			3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-// 			4, 0, 0, 0,
-// 			5, 0, 0, 0,
-// 			6, 0, 0, 0,
-// 		];
+	#[test]
+	fn test_block_header_reader() {
+		let buffer = vec![
+			1, 0, 0, 0,
+			2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+			3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+			4, 0, 0, 0,
+			5, 0, 0, 0,
+			6, 0, 0, 0,
+			4,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		];
 
-// 		let mut reader = Reader::new(&buffer);
+		let mut reader = Reader::new(&buffer);
 
-// 		let expected = BlockHeader {
-// 			version: 1,
-// 			previous_header_hash: [2; 32].into(),
-// 			merkle_root_hash: [3; 32].into(),
-// 			time: 4,
-// 			bits: 5.into(),
-// 			nonce: 6,
-// 		};
+		let expected = BlockHeader {
+			version: 1,
+			previous_header_hash: [2; 32].into(),
+			merkle_root_hash: [3; 32].into(),
+			time: 4,
+			bits: 5.into(),
+			nonce: 6,
+			coded_merkle_roots_hashes: vec![H256::default(); 4],
+		};
 
-// 		assert_eq!(expected, reader.read().unwrap());
-// 		assert_eq!(ReaderError::UnexpectedEnd, reader.read::<BlockHeader>().unwrap_err());
-// 	}
-// }
+		assert_eq!(expected, reader.read().unwrap());
+		assert_eq!(ReaderError::UnexpectedEnd, reader.read::<BlockHeader>().unwrap_err());
+	}
+}
