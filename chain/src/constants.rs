@@ -35,4 +35,7 @@ pub const AGGREGATE: usize = 8;
 //coding rate for code ensemble
 pub const RATE: f32 = 0.25;
 
+//number of hashes of coded symbols stored in the block header 
+pub const HEADER_SIZE: u32 = 8;
+
 
