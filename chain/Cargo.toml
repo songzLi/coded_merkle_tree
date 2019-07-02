@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["debris <marek.kotewicz@gmail.com>"]
 
 [dependencies]
+rand = "0.7"
 rustc-hex = "2"
 heapsize = "0.4"
 rayon = "1.0"

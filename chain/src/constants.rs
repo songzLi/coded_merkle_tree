@@ -38,4 +38,11 @@ pub const RATE: f32 = 0.25;
 //number of hashes of coded symbols stored in the block header 
 pub const HEADER_SIZE: u32 = 8;
 
+//number of coded symbols sampled by a light node to check data availability
+pub const SAMPLE_COMPLEXITY: u32 = 30;
+
+
+
+
+
 

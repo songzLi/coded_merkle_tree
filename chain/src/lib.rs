@@ -4,8 +4,11 @@ extern crate primitives;
 extern crate rayon;
 extern crate bitcrypto as crypto;
 extern crate serialization as ser;
+extern crate rand;
+
 #[macro_use]
 extern crate serialization_derive;
+
 
 pub mod constants;
 
@@ -14,6 +17,7 @@ mod block_header;
 mod merkle_root;
 mod coded_merkle_roots;
 mod transaction;
+//mod light_client;
 
 /// `IndexedBlock` extension
 mod read_and_hash;
@@ -22,6 +26,7 @@ mod read_and_hash;
 mod indexed_transaction;
 
 pub use primitives::{hash, bytes, bigint, compact};
+pub use rand::distributions::{Distribution, Uniform};
 
 pub use block::{Block, CodingErr};
 pub use block_header::BlockHeader;

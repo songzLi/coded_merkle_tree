@@ -13,7 +13,6 @@ use merkle_root::merkle_root;
 pub struct Block {
 	pub block_header: BlockHeader,
 	pub transactions: Vec<Transaction>,
-	//pub coded_merkle_tree: Vec<Symbols>,
 }
 
 //a new type for a coding errors
