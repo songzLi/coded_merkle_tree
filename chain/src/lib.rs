@@ -17,6 +17,7 @@ mod block_header;
 mod merkle_root;
 mod coded_merkle_roots;
 mod transaction;
+mod decoder;
 //mod light_client;
 
 /// `IndexedBlock` extension
