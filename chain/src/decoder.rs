@@ -102,9 +102,7 @@ impl Decoder {
         }
 
         (out_symbols, out_indices, self.num_decoded_symbols == self.n)
-
 	}
-
 
 	pub fn parity_update(&mut self, symbols: Vec<Symbol>, symbol_indices: Vec<u64>) -> bool {
 		if  symbols.len() == 0 {
@@ -186,20 +184,79 @@ impl Decoder {
 
 #[cfg(test)]
 mod tests {
-	use hash::H256;
+	use rand::thread_rng;
+    use rand::seq::SliceRandom;
 	use super::*;
 
-	//Test for construction of a coded Merkle tree
+	//Test for decoder for a (2,4)-regular LDPC code with (n,k) = (8,4)
 	#[test]
 	fn test_peeling_decoder1() {
+		// let mut vec: Vec<u64> = (0..16).collect();
+  //       vec.shuffle(&mut thread_rng());
 
+  //       let mut symbols: Vec<Vec<u64>> = vec![];
+  //       for i in 0..8 {
+  //       	symbols.push(vec![vec[2*i]/4, vec[2*i+1]/4]);
+  //       }
+
+		// let mut parities: Vec<Vec<u64>> = vec![];
+		// for i in 0..4 {
+		// 	let mut parity = vec![];
+		// 	for j in 0..8 {
+		// 		if symbols[j].contains(&i) {
+		// 			parity.push(j as u64);
+		// 		}
+		// 	}
+		// 	parities.push(parity);
+		// }
+
+		let symbols: Vec<Vec<u64>> = vec![
+		vec![0, 1], vec![1, 2], vec![2, 3], vec![3, 0], vec![0, 3], vec![1, 2], vec![2, 1], vec![3, 0]
+		]; 
+
+		let parities: Vec<Vec<u64>> = vec![
+		vec![0, 3, 4, 7], vec![0, 1, 6, 5], vec![1, 2, 5, 6], vec![2, 3, 4, 7]
+		];  
+
+		let mut decoder = Decoder::new(0, parities, symbols);
+		println!("Decoder initialized.");
+
+		// let mut symbol_arrive: Vec<u64> = (0..8).collect();
+		// symbol_arrive.shuffle(&mut thread_rng());
+		let symbol_arrive: Vec<u64> = vec![3, 5, 7, 0, 4, 2, 6, 1];
+		let mut count = 0;
+		println!("Checkpoint.");
+
+		loop {
+			let (symbols, symbol_indices, decoded) = decoder.symbol_update_from_reception(
+				vec![Symbol::Base([0u8;BASE_SYMBOL_SIZE])], vec![symbol_arrive[count]]);
+			if decoded {break;}
+			if decoder.parity_update(symbols, symbol_indices) {
+				if decoder.peeling_decode() {break;}
+			}
+			count += 1;
+		}
+		println!("Finish decoding using {} coded symbols.", count + 1);
+
+		let mut flag = true;
+		for i in 0..8 {			
+			if let Symbol::Base(decoded) = decoder.symbol_values[i] {
+				for j in 0..BASE_SYMBOL_SIZE {
+					if decoded[j] != 0u8 {
+						flag = false;
+						break;
+					}
+				}				
+			}
+			if flag == false {break;}
+		}
+		assert_eq!(flag, true);
 	}
 
-	//Test for construction of another coded Merkle tree
-	#[test]
-	fn test_peeling_decoder2() {
+	// #[test]
+	// fn test_peeling_decoder2() {
 
-	}
+	// }
 }
 
 
