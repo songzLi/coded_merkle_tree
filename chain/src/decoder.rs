@@ -118,14 +118,14 @@ impl Decoder {
 					(Symbol::Base(x), Symbol::Base(y)) => {
 						let mut sum: [u8; BASE_SYMBOL_SIZE] = x.clone();
 						for j in 0..BASE_SYMBOL_SIZE {
-							sum[j].bitxor(y[j]);
+							sum[j] = sum[j].bitxor(y[j]);
 						} 
 						self.parity_values[*parity as usize] = Symbol::Base(sum);
 					},
 					(Symbol::Upper(x), Symbol::Upper(y)) => {
 						let mut sum: [u8; 32 * AGGREGATE] = x.clone();
 						for j in 0..(32 * AGGREGATE) {
-							sum[j].bitxor(y[j]);
+							sum[j] = sum[j].bitxor(y[j]);
 						} 
 						self.parity_values[*parity as usize] = Symbol::Upper(sum);
 					},

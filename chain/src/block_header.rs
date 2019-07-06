@@ -120,10 +120,10 @@ impl BlockHeader {
 				}
 				match error_type {
 					NotZero => {
-						let sum = [0u8; BASE_SYMBOL_SIZE];
+						let mut sum = [0u8; BASE_SYMBOL_SIZE];
 						for j in 0..BASE_SYMBOL_SIZE {
 							for i in 0..err_symbols.len() {
-								sum[j].bitxor(err_symbols[i][j]);
+								sum[j] = sum[j].bitxor(err_symbols[i][j]);
 							}
 						}
 						for j in 0..BASE_SYMBOL_SIZE {
@@ -135,10 +135,10 @@ impl BlockHeader {
 						return false;
 					}
 					NotHash => {
-						let missing = [0u8; BASE_SYMBOL_SIZE];
+						let mut missing = [0u8; BASE_SYMBOL_SIZE];
 						for j in 0..BASE_SYMBOL_SIZE {
 							for i in 0..err_symbols.len() {
-								missing[j].bitxor(err_symbols[i][j]);
+								missing[j] = missing[j].bitxor(err_symbols[i][j]);
 							}
 						}
 						if !self.verify_base(missing, index[index.len()-1], block_size, &merkle_proofs[merkle_proofs.len()-1]) {
@@ -161,7 +161,7 @@ impl BlockHeader {
 				let symbol_size = 32 * AGGREGATE;
 				match error_type {
 					NotZero => {
-						let sum = [0u8; 32 * AGGREGATE];
+						let mut sum = [0u8; 32 * AGGREGATE];
 						for i in 0..err_symbols.len() {
 							//Create a byte vector from an symbol on upper level
 							let mut sym = [0u8; 32 * AGGREGATE];
@@ -170,7 +170,7 @@ impl BlockHeader {
         		                sym[k * 32 .. (k+1) * 32].copy_from_slice(&temp);
         		            }
 							for j in 0..symbol_size {								
-								sum[j].bitxor(sym[j]);
+								sum[j] = sum[j].bitxor(sym[j]);
 							}
 						}
 						for j in 0..symbol_size {
@@ -182,7 +182,7 @@ impl BlockHeader {
 						return false;
 					}
 					NotHash => {
-						let missing = [0u8; 32 * AGGREGATE];
+						let mut missing = [0u8; 32 * AGGREGATE];
 						for i in 0..err_symbols.len() {
 							//Create a byte vector from an symbol on upper level
 							let mut sym = [0u8; 32 * AGGREGATE];
@@ -191,7 +191,7 @@ impl BlockHeader {
         		                sym[k * 32 .. (k+1) * 32].copy_from_slice(&temp);
         		            }
 							for j in 0..symbol_size {								
-								missing[j].bitxor(sym[j]);
+								missing[j] = missing[j].bitxor(sym[j]);
 							}
 						}
 
