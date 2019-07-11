@@ -3,6 +3,7 @@ use std::cmp;
 use std::ops::BitXor;
 use {Symbols, SymbolBase, SymbolUp};
 use hash::H256;
+use crypto::dhash256;
 
 
 #[derive(Clone, Copy)]
@@ -11,6 +12,10 @@ pub enum Symbol {
 	Upper([u8; 32 * AGGREGATE]),
 	Empty,
 } 
+
+pub struct IncorrectCodingProof {
+
+}
 
 //A code is specified by its parity-check matrix, which is represented by parities and symbols vectors
 pub struct Code {
@@ -24,6 +29,7 @@ pub struct TreeDecoder {
 	pub n: u64, //block length of code on the base layer of the tree
 	pub height: u32,
 	pub decoders: Vec<Decoder>,
+	pub hashes: Vec<Vec<H256>>
 }
 
 
@@ -56,30 +62,27 @@ fn remove_one_item(vector: &Vec<u64>, item: &u64) -> Vec<u64> {
 }
 
 impl TreeDecoder {
-	pub fn new(codes: Vec<Code>) -> Self {
+	pub fn new(codes: Vec<Code>, header_hash: Vec<H256>) -> Self {
 		let num_layers = codes.len();
 		let base_length: u64 = codes[0].n;
 		let mut decs: Vec<Decoder> = vec![];
+		let mut hash_list: Vec<Vec<H256>> = vec![];
 		for i in 0..num_layers {
 			let code = &codes[i];
 			let dec: Decoder = Decoder::new(i as u32, code.parities.to_vec(), code.symbols.to_vec());
 			decs.push(dec);
+			hash_list.push(vec![H256::default();code.symbols.len()]);
 		}
+		hash_list[num_layers-1] = header_hash;
+
 		TreeDecoder {
 			n: base_length,
 			height: num_layers as u32,
 			decoders: decs,
+			hashes: hash_list,
 		}
 
 	}
-
-
-
-
-
-
-
-
 }
 
 
@@ -187,7 +190,34 @@ impl Decoder {
 	}
 
 
-	pub fn symbol_update_from_degree_1_parities(&mut self) -> (Vec<Symbol>, Vec<u64>, bool) {
+	// pub fn symbol_update_from_degree_1_parities(&mut self) -> (Vec<Symbol>, Vec<u64>, bool) {
+	// 	let mut symbols = Vec::<Symbol>::new();
+ //        let mut symbol_indices = Vec::<u64>::new();
+
+ //        for i in 0..self.degree_1_parities.len() {
+ //        	let parity = self.degree_1_parities[i].clone();
+ //        	if self.parities[parity as usize].len() > 0 {
+ //        		let symbol_idx = self.parities[parity as usize][0];
+ //        		if let Symbol::Empty = self.symbol_values[symbol_idx as usize] {
+ //        			self.symbol_values[symbol_idx as usize] = self.parity_values[parity as usize];
+ //        			self.num_decoded_symbols += 1; 
+ //        			if symbol_idx < self.k {
+ //                        self.num_decoded_sys_symbols += 1;
+ //        			}
+ //        			symbols.push(self.parity_values[parity as usize].clone());
+ //                    symbol_indices.push(symbol_idx.clone());
+ //        		} 
+ //        	}
+ //        }
+
+ //        self.degree_1_parities = vec![];
+
+ //        (symbols, symbol_indices, self.num_decoded_symbols == self.n)
+	// }
+
+
+	pub fn symbol_update_from_degree_1_parities(&mut self, hashes: Vec<H256>) 
+	-> Result<(Vec<Symbol>, Vec<u64>, bool),IncorrectCodingProof> {
 		let mut symbols = Vec::<Symbol>::new();
         let mut symbol_indices = Vec::<u64>::new();
 
@@ -197,20 +227,25 @@ impl Decoder {
         		let symbol_idx = self.parities[parity as usize][0];
         		if let Symbol::Empty = self.symbol_values[symbol_idx as usize] {
         			self.symbol_values[symbol_idx as usize] = self.parity_values[parity as usize];
-        			self.num_decoded_symbols += 1; 
-        			if symbol_idx < self.k {
-                        self.num_decoded_sys_symbols += 1;
-        			}
-        			symbols.push(self.parity_values[parity as usize].clone());
-                    symbol_indices.push(symbol_idx.clone());
-        		} 
-        	}
+        			if dhash256(&self.symbol_values[symbol_idx as usize].unwrap()) == hashes[symbol_idx as usize] {
+        				self.num_decoded_symbols += 1; 
+        			    if symbol_idx < self.k {
+                            self.num_decoded_sys_symbols += 1;
+                        }
+        			    symbols.push(self.parity_values[parity as usize].clone());
+                        symbol_indices.push(symbol_idx.clone());
+                    } else {//coding is done incorrectly, return an incorrect-coding 
+                    	println!("Incorrect coding detected on layer {} for parity equation {}.",self.level,parity);
+                    	return Err()
+                    }
+                } 
+            }
         }
 
         self.degree_1_parities = vec![];
 
-        (symbols, symbol_indices, self.num_decoded_symbols == self.n)
-	}
+        Ok(symbols, symbol_indices, self.num_decoded_symbols == self.n)
+    }
 
 
 	pub fn peeling_decode(&mut self) -> bool {
