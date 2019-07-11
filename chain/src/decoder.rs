@@ -1,4 +1,4 @@
-use constants::{BASE_SYMBOL_SIZE, AGGREGATE, RATE};
+use constants::{BASE_SYMBOL_SIZE, AGGREGATE, RATE, HEADER_SIZE};
 use std::cmp;
 use std::ops::BitXor;
 use {Symbols, SymbolBase, SymbolUp};
@@ -12,8 +12,23 @@ pub enum Symbol {
 	Empty,
 } 
 
+//A code is specified by its parity-check matrix, which is represented by parities and symbols vectors
+pub struct Code {
+	pub n: u64, //block length of code
+	pub parities: Vec<Vec<u64>>,
+	pub symbols: Vec<Vec<u64>>,
+}
+
+
+pub struct TreeDecoder {
+	pub n: u64, //block length of code on the base layer of the tree
+	pub height: u32,
+	pub decoders: Vec<Decoder>,
+}
+
+
 pub struct Decoder {
-	pub level: u64,
+	pub level: u32,
 	pub n: u64,
 	pub k: u64,
 	pub p: u64,
@@ -40,9 +55,38 @@ fn remove_one_item(vector: &Vec<u64>, item: &u64) -> Vec<u64> {
 	new_vec
 }
 
+impl TreeDecoder {
+	pub fn new(codes: Vec<Code>) -> Self {
+		let num_layers = codes.len();
+		let base_length: u64 = codes[0].n;
+		let mut decs: Vec<Decoder> = vec![];
+		for i in 0..num_layers {
+			let code = &codes[i];
+			let dec: Decoder = Decoder::new(i as u32, code.parities.to_vec(), code.symbols.to_vec());
+			decs.push(dec);
+		}
+		TreeDecoder {
+			n: base_length,
+			height: num_layers as u32,
+			decoders: decs,
+		}
+
+	}
+
+
+
+
+
+
+
+
+}
+
+
+
 
 impl Decoder {
-	pub fn new (level: u64, parities: Vec<Vec<u64>>, symbols: Vec<Vec<u64>>) -> Self {
+	pub fn new (level: u32, parities: Vec<Vec<u64>>, symbols: Vec<Vec<u64>>) -> Self {
 		let n: u64 = symbols.len() as u64;
 		let p: u64 = parities.len() as u64;
 		let k = n - p;
