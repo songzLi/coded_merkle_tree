@@ -31,6 +31,15 @@ pub fn next_index(index: u32, k: u32, reduce_factor: u32) -> u32 {
 	}
 }
 
+// pub fn next_index<T>(index: T, k: T, reduce_factor: T) -> T {
+// 	if index <= k - 1 {
+// 		index / reduce_factor
+// 	}
+// 	else {
+// 		(index - k) / ((AGGREGATE as T) - reduce_factor)
+// 	}
+// }
+
 impl From<&'static str> for Block {
 	fn from(s: &'static str) -> Self {
 		deserialize(&s.from_hex::<Vec<u8>>().unwrap() as &[u8]).unwrap()
