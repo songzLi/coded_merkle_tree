@@ -154,11 +154,12 @@ impl TreeDecoder {
 	-> Result<Vec<Decoder>, IncorrectCodingProof> {
 		let mut hash_proof = self.hashes[(self.height - 1) as usize].clone();
 
-		//Iterate decoding starting from the top of coded Merkle tree
+		//Iterate decoding starting from the top layer of coded Merkle tree
 		for i in (0..self.height).rev() {
 			let received_symbols = symbols_all_levels[i as usize].clone();
 			let received_indices = indices_all_levels[i as usize].clone();
 			//Data reception on level i
+			//Here the variable decoded is used for indicating layer i gets decoded
 			let (mut new_symbols, mut new_symbol_indices, mut decoded) = self.decoders[i as usize].symbol_update_from_reception(
 				received_symbols, received_indices);
 			//Update the parities using the received symbols
@@ -197,7 +198,7 @@ impl TreeDecoder {
 			loop {
 				//check for degree-1 parity nodes, if no such nodes are found, decoding is stalled
 				if progress {
-					let mut decoding_result = self.decoders[i as usize].symbol_update_from_degree_1_parities(hash_proof);
+					let mut decoding_result = self.decoders[i as usize].symbol_update_from_degree_1_parities(&hash_proof);
 					match decoding_result {
 						Ok((dec_syms, dec_sym_indices, finished)) => { //all decoded symbols match their hash values
 							//Update the parity values
@@ -251,10 +252,10 @@ impl TreeDecoder {
 				} else {
 					return Ok(self.decoders.clone());
 				}
-
-			}
+			} 
 		}
-		//return Ok(self.decoders.clone());
+		unreachable!();
+		//Ok(self.decoders.clone())
 	}
 
 
@@ -442,7 +443,7 @@ impl Decoder {
 	// }
 
 
-	pub fn symbol_update_from_degree_1_parities(&mut self, hashes: Vec<H256>) 
+	pub fn symbol_update_from_degree_1_parities(&mut self, hashes: &Vec<H256>) 
 	-> Result<(Vec<Symbol>, Vec<u64>, bool), (u32, u64, Vec<u64>, Vec<Symbol>)> {
 		let mut symbols = Vec::<Symbol>::new();
         let mut symbol_indices = Vec::<u64>::new();
