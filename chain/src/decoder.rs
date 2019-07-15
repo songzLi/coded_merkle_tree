@@ -154,11 +154,14 @@ impl TreeDecoder {
 	-> Result<Vec<Decoder>, IncorrectCodingProof> {
 		let mut hash_proof = self.hashes[(self.height - 1) as usize].clone();
 
+		//Iterate decoding starting from the top of coded Merkle tree
 		for i in (0..self.height).rev() {
 			let received_symbols = symbols_all_levels[i as usize].clone();
 			let received_indices = indices_all_levels[i as usize].clone();
+			//Data reception on level i
 			let (mut new_symbols, mut new_symbol_indices, mut decoded) = self.decoders[i as usize].symbol_update_from_reception(
 				received_symbols, received_indices);
+			//Update the parities using the received symbols
 			let mut progress = self.decoders[i as usize].parity_update(new_symbols, new_symbol_indices);
 			//parity nodes are updated, now check if there is any incorrect coding
 			for j in 0..self.decoders[i as usize].p {
@@ -171,15 +174,17 @@ impl TreeDecoder {
 						for t in error_indices.iter() {
 							error_symbols.push(self.decoders[i as usize].symbol_values[*t as usize]);
 						}
+						println!("NotZero incorrect coding detected on layer {} for parity equation #{}.",i,j);
 						return Err(self.generate_incorrect_coding_proof(CodingErr::NotZero, i, 
 							j as u64, error_symbols, error_indices));
 					} 
 				}
 			}
 
+            //Already received all coded symbols
 			if decoded {
 				if i > 0 {
-					//decoding done, use the systematic symbols as the hash proof for previous layer
+					//decoding done for layer i, use the systematic symbols as the hash proof for previous layer
 				    self.hashes[(i-1) as usize] = symbol_to_hash(&self.decoders[i as usize].symbol_values[0..(self.decoders[i as usize].k as usize)].to_vec());
 				    hash_proof = self.hashes[(i-1) as usize].clone();
 				    continue;	
@@ -188,25 +193,69 @@ impl TreeDecoder {
 				}							
 			}
 
-			// if progress {
+			//Start decoding layer i using degree-1 parities, until all symbols are decoded or hitting a stopping set
+			loop {
+				//check for degree-1 parity nodes, if no such nodes are found, decoding is stalled
+				if progress {
+					let mut decoding_result = self.decoders[i as usize].symbol_update_from_degree_1_parities(hash_proof);
+					match decoding_result {
+						Ok((dec_syms, dec_sym_indices, finished)) => { //all decoded symbols match their hash values
+							//Update the parity values
+							progress = self.decoders[i as usize].parity_update(dec_syms, dec_sym_indices);
+							//first check if any "NotZero" errors occur after decoding
+							//If found any, construct NotZero incorrect-coding proof
+							for j in 0..self.decoders[i as usize].p {
+							    if self.decoders[i as usize].parity_degree[j as usize] == 0 { //all symbols associated to this parity are known
+					                if !symbol_equal_to_zero(self.decoders[i as usize].parity_values[j as usize]) {
+					                //construct incorrect coding proof
+						            let error_indices = self.decoders[i as usize].code.parities[j as usize].clone();
+						            let mut error_symbols: Vec<Symbol> = vec![];
+						
+						            for t in error_indices.iter() {
+						            	error_symbols.push(self.decoders[i as usize].symbol_values[*t as usize]);
+						            }
+						            println!("NotZero incorrect coding detected on layer {} for parity equation #{}.",i,j);
+						            return Err(self.generate_incorrect_coding_proof(CodingErr::NotZero, i, 
+						            	j as u64, error_symbols, error_indices));
+					                } 
+				                }
+			                }
+			                if finished { //decoding is done for layer i
+			                	if i > 0 { //not the base layer yet
+					            //decoding done for layer i, use the systematic symbols as the hash proof for previous layer
+				                    self.hashes[(i-1) as usize] = symbol_to_hash(&self.decoders[i as usize].symbol_values[0..(self.decoders[i as usize].k as usize)].to_vec());
+				                    hash_proof = self.hashes[(i-1) as usize].clone();
+				                    decoded = finished;
+				                    break;
+				                } else { //base layer decoded
+				                	return Ok(self.decoders.clone());
+				                } 				                
+				            } else { //decoding for layer i needs to continue 
+				            	continue;
+				            }
+						},
+						Err((err_level, err_parity, index_set, proof_symbols)) => { //some decoded symbols do not pass hash test
+							return Err(self.generate_incorrect_coding_proof(CodingErr::NotHash, err_level, 
+						            	err_parity, proof_symbols, index_set));
+						}
+					} 
+				} else {
+					// no more progress can be made
+					panic!("Hitting a stopping set at level {}. Decoding failured.", i);
+				}
 
-			// }
+			}
+			if decoded {
+				if i > 0 {
+					continue;
+				} else {
+					return Ok(self.decoders.clone());
+				}
 
-
-
-			// //Peeling decoding
-			// loop {
-			// 	let progress = self.decoders[i].parity_update(new_symbols, new_symbol_indices);
-
-			// }
-			// //check for incorrect coding, parity by parity
-
-
+			}
 		}
-		return Ok(self.decoders.clone());
-
+		//return Ok(self.decoders.clone());
 	}
-
 
 
 	pub fn new(codes: Vec<Code>, header_hash: Vec<H256>) -> Self {
@@ -419,9 +468,9 @@ impl Decoder {
                         }
         			    symbols.push(self.parity_values[parity as usize].clone());
                         symbol_indices.push(symbol_idx.clone());
-                    } else {//coding is done incorrectly, return an incorrect-coding 
+                    } else {//coding is done incorrectly, return an incorrect-coding message
                     	println!("Incorrect coding detected on layer {} for parity equation #{}.",self.level,parity);
-                    	// Preparing info for constructing incorrect coding proof
+                    	// Preparing info for constructing incorrect-coding proof
                     	let index_set: Vec<u64> = self.code.parities[parity as usize].clone();
                     	let mut correct_index_set: Vec<u64> = remove_one_item(&index_set, &symbol_idx);
                     	let mut symbols_in_proof: Vec<Symbol> = vec![];
