@@ -8,6 +8,7 @@ use bytes::Bytes;
 use coded_merkle_roots::coded_merkle_roots;
 use hash::H256;
 use merkle_root::merkle_root;
+use decoder::Code;
 
 #[derive(Debug, PartialEq, Clone, Serializable, Deserializable)]
 pub struct Block {
@@ -76,7 +77,7 @@ impl Block {
 
 	//Returns hashes of the symbols on the top layer of coded Merkle tree 
 	//#[cfg(any(test, feature = "test-helpers"))]
-	pub fn coded_merkle_roots(&self, header_size: u32, rate: f32) -> (usize, Vec<H256>, Vec<Symbols>) {
+	pub fn coded_merkle_roots(&self, header_size: u32, rate: f32, codes: Vec<Code>) -> (usize, Vec<H256>, Vec<Symbols>) {
 		let mut trans_byte = self.transactions.iter().map(Transaction::bytes).collect::<Vec<Bytes>>();
 		let mut data: Vec<u8> = vec![];
 		for j in 0..trans_byte.len(){
@@ -96,17 +97,17 @@ impl Block {
 			symbol.copy_from_slice(&data[l * BASE_SYMBOL_SIZE .. (l + 1) * BASE_SYMBOL_SIZE]);
 			symbols.push(symbol);
 		}
-		let (roots, tree) = coded_merkle_roots(&symbols, header_size, rate);
+		let (roots, tree) = coded_merkle_roots(&symbols, header_size, rate, codes);
 		(original_size, roots, tree)
 	}
 
 	//Returns a Merkle proof for some symbol index at some level of the coded merkle tree
     //A proof for a particular symbol is a list of symbols in the upper levels
 	//#[cfg(any(test, feature = "test-helpers"))]
-	pub fn merkle_proof(&self, lvl: usize, index: u32) -> Vec<SymbolUp> {
+	pub fn merkle_proof(&self, lvl: usize, index: u32, codes: Vec<Code>) -> Vec<SymbolUp> {
 		//Construct the coded Merkle tree
 		let header_size = self.block_header.coded_merkle_roots_hashes.len();
-		let (_, _, tree) = self.coded_merkle_roots((header_size as u32), RATE);
+		let (_, _, tree) = self.coded_merkle_roots((header_size as u32), RATE, codes);
 
 		let mut proof = Vec::<SymbolUp>::new();
 		let mut moving_index = index;

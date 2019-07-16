@@ -1,6 +1,7 @@
 use crypto::dhash256;
 use hash::H256;
 use constants::{BASE_SYMBOL_SIZE, AGGREGATE, RATE};
+use decoder::{Symbol, Code, Decoder};
 use ser::{Serializable, Deserializable, deserialize, serialize};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
@@ -17,6 +18,37 @@ pub enum Symbols{
 	Base(Vec<SymbolBase>),
 	Upper(Vec<SymbolUp>),
 } 
+
+
+pub fn layer_to_layer_convert(symbols: Vec<Symbol>) -> Symbols {
+	match symbols[0] {
+		Symbol::Base(x) => {
+			let mut ss: Vec<SymbolBase> = vec![];
+			for i in 0..symbols.len() {
+				if let Symbol::Base(s) = symbols[i] {
+					ss.push(s);
+				}
+			} 
+			return Symbols::Base(ss);
+		},
+		Symbol::Upper(x) => {
+			let mut ss_up: Vec<SymbolUp> = vec![];
+			for j in 0..symbols.len() {
+				let mut up_hash = [H256::default(); AGGREGATE]; // A symbol value in the hash form
+				if let Symbol::Upper(s_up) = symbols[j] {
+					for t in 0..AGGREGATE {
+						let mut h = [0u8; 32];
+						h.copy_from_slice(&s_up[t*32..(t*32+32)]);
+						up_hash[t] = H256::from(h);
+					}
+				}
+				ss_up.push(up_hash);
+			}
+			return Symbols::Upper(ss_up);
+		},
+		_ => {unreachable!();}
+	}
+}
 
 pub fn compute_hash(coded: &Symbols) -> Vec<H256> {
 	let mut roots = Vec::<H256>::new(); 
@@ -47,30 +79,30 @@ fn pad(symbols: &[SymbolBase], rate: f32) -> Vec<SymbolBase> {
 	data
 }
 
-pub fn encoding(data: &Symbols, rate: f32) -> Symbols {
-	match data {
-		Symbols::Base(message) => {
-			let k = message.len();
-			let n = ((k as f32) / rate) as usize;
-			let mut coded: Vec<SymbolBase> = message.clone();
-			for _i in k..n {
-				coded.push([0x00; BASE_SYMBOL_SIZE]);
-			}
-			//println!("{} symbols on this level.", coded.len());
-			Symbols::Base(coded)
-		},
-		Symbols::Upper(message) => {
-			let k = message.len();
-			let n = ((k as f32) / rate) as usize;
-			let mut coded: Vec<SymbolUp> = message.clone();
-			for _i in k..n {
-				coded.push([H256::default(); AGGREGATE]);
-			}
-			//println!("{} symbols on this level.", coded.len());
-			Symbols::Upper(coded)
-		},
-	}
-}
+// pub fn encoding(data: &Symbols, rate: f32) -> Symbols {
+// 	match data {
+// 		Symbols::Base(message) => {
+// 			let k = message.len();
+// 			let n = ((k as f32) / rate) as usize;
+// 			let mut coded: Vec<SymbolBase> = message.clone();
+// 			for _i in k..n {
+// 				coded.push([0x00; BASE_SYMBOL_SIZE]);
+// 			}
+// 			//println!("{} symbols on this level.", coded.len());
+// 			Symbols::Base(coded)
+// 		},
+// 		Symbols::Upper(message) => {
+// 			let k = message.len();
+// 			let n = ((k as f32) / rate) as usize;
+// 			let mut coded: Vec<SymbolUp> = message.clone();
+// 			for _i in k..n {
+// 				coded.push([H256::default(); AGGREGATE]);
+// 			}
+// 			//println!("{} symbols on this level.", coded.len());
+// 			Symbols::Upper(coded)
+// 		},
+// 	}
+// }
 
 fn hash_aggregate(coded: &Symbols, rate: f32) -> Symbols{
 	let mut hashes = Vec::<H256>::new();
@@ -111,21 +143,46 @@ fn hash_aggregate(coded: &Symbols, rate: f32) -> Symbols{
 }
 
 // Calculates the roots of the coded Merkle tree
-pub fn coded_merkle_roots(symbols: &[SymbolBase], header_size: u32, rate: f32) -> (Vec<H256>, Vec<Symbols>) {
+pub fn coded_merkle_roots(symbols: &[SymbolBase], header_size: u32, rate: f32, codes: Vec<Code>) -> (Vec<H256>, Vec<Symbols>) {
     let data = pad(symbols, rate);
     let n = ((data.len() as f32) / rate) as u32;
     let level = ((((n/header_size) as f32).log2()/(rate * (AGGREGATE as f32)).log2()) as u32) + 1;
 
     //Coded merkle tree is a vector of symbols on each layer
     let mut tree: Vec<Symbols> = Vec::with_capacity(level as usize); 
+
     // Construct the base layer
-    let coded_data = encoding(&Symbols::Base(data), rate);
-    tree.push(coded_data);
+    // Initialize decoder/encoder for base layer
+    let mut base_layer: Decoder = Decoder::new(0 as u32, codes[0].parities.to_vec(), codes[0].symbols.to_vec());
+    //Perform encoding operation
+    let mut sys_symbols_base: Vec<Symbol> = vec![];
+    for j in 0..data.len() {
+    	sys_symbols_base.push(Symbol::Base(data[j]));
+    }
+    //Construct base layer
+    tree.push(layer_to_layer_convert(base_layer.encode(sys_symbols_base)));
 
     // Construct upper layers
     for i in 0..(level-1) {
-    	let new_data: Symbols = hash_aggregate(&tree[i as usize], rate);
-    	tree.push(encoding(&new_data, rate));
+    	let new_data: Symbols = hash_aggregate(&tree[i as usize], rate); // data type is Symbols::Upper(Vec<SymbolUp>)
+    	// Initialize decoder/encoder for layer i+1
+        let mut upper_layer: Decoder = Decoder::new((i+1) as u32, 
+        	codes[(i+1) as usize].parities.to_vec(), codes[(i+1) as usize].symbols.to_vec());
+        let mut sys_symbols_upper: Vec<Symbol> = vec![];
+
+        //Convert new_data to Vec<Symbol>
+        if let Symbols::Upper(ss) = new_data {
+        	for t in 0..ss.len() {
+        		let mut upp_sym: [u8; 32 * AGGREGATE] = [0u8; 32 * AGGREGATE];
+        		for l in 0..AGGREGATE {
+        			let temp: [u8; 32] = ss[t][l].into();
+        			upp_sym[l*32..(l*32+32)].copy_from_slice(&temp);
+        		}
+        		sys_symbols_upper.push(Symbol::Upper(upp_sym));
+        	}
+        }
+        //Encode and convert back to Symbols::Upper(Vec<SymbolUp>)
+    	tree.push(layer_to_layer_convert(upper_layer.encode(sys_symbols_upper)));
     }
     (compute_hash(&tree[tree.len()-1]), tree)
 }

@@ -315,7 +315,7 @@ impl TreeDecoder {
 
 
 impl Decoder {
-	pub fn new (level: u32, parities: Vec<Vec<u64>>, symbols: Vec<Vec<u64>>) -> Self {
+	pub fn new(level: u32, parities: Vec<Vec<u64>>, symbols: Vec<Vec<u64>>) -> Self {
 		let n: u64 = symbols.len() as u64;
 		let p: u64 = parities.len() as u64;
 		let k = n - p;
@@ -503,9 +503,61 @@ impl Decoder {
 	// 	}
 	// }
 
+	pub fn symbol_update_from_degree_1_parities_encode(&mut self) -> (Vec<Symbol>, Vec<u64>, bool) {
+		let mut symbols = Vec::<Symbol>::new();
+        let mut symbol_indices = Vec::<u64>::new();
 
+        for i in 0..self.degree_1_parities.len() {
+        	let parity = self.degree_1_parities[i].clone();
+        	if self.parities[parity as usize].len() > 0 {
+        		let symbol_idx = self.parities[parity as usize][0];
+        		if let Symbol::Empty = self.symbol_values[symbol_idx as usize] {
+        			self.symbol_values[symbol_idx as usize] = self.parity_values[parity as usize]; //Symbol decoded
+        			self.num_decoded_symbols += 1; 
+        			if symbol_idx < self.k {
+                        self.num_decoded_sys_symbols += 1;
+                    }
+        			symbols.push(self.parity_values[parity as usize].clone());
+                    symbol_indices.push(symbol_idx.clone());                    
+                } 
+            }
+        }
+        self.degree_1_parities = vec![];
 
+        (symbols, symbol_indices, self.num_decoded_symbols == self.n)
+    }
 
+	pub fn peeling_encode(&mut self) -> bool {
+		loop {
+			let (symbols, symbol_indices, encoded) = self.symbol_update_from_degree_1_parities_encode();
+			if encoded { return encoded; }
+			if symbols.len() > 0 { // new symbols get decoded
+				let keep_peeling = self.parity_update(symbols, symbol_indices);
+				if keep_peeling {continue;}
+			}
+			return self.num_decoded_symbols == self.n;
+		}
+	}
+
+	//Encoding by decoding all coded symbols from systematic symbols 
+	pub fn encode(&mut self, sys_symbols: Vec<Symbol>) -> Vec<Symbol> {
+		let mut indices = vec![];//indices of sysmtematic symbols
+		for i in 0..self.k {
+			indices.push(i as u64);
+		}
+		let (symbols, symbol_indices, encoded) = self.symbol_update_from_reception(sys_symbols, indices);
+		loop {
+			if encoded {break;}
+			if self.parity_update(symbols, symbol_indices) {
+				if self.peeling_encode() {break;}
+				else {unreachable!();} //encoding will succeed if all systematic symbols are given
+			}
+			else {
+				unreachable!(); //encoding will succeed if all systematic symbols are given
+			}
+		}
+		self.symbol_values.clone()
+	}
 }
 
 #[cfg(test)]

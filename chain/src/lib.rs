@@ -29,6 +29,7 @@ mod indexed_transaction;
 pub use primitives::{hash, bytes, bigint, compact};
 pub use rand::distributions::{Distribution, Uniform};
 
+pub use decoder::{Symbol, Decoder, Code};
 pub use block::{Block, CodingErr};
 pub use block_header::BlockHeader;
 pub use merkle_root::{merkle_root, merkle_node_hash};
