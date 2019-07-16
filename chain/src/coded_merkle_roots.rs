@@ -14,6 +14,7 @@ pub type SymbolBase = [u8; BASE_SYMBOL_SIZE];
 pub type SymbolUp = [H256; AGGREGATE];
 
 //a new type for a sequence of data symbols
+#[derive(Clone)]
 pub enum Symbols{
 	Base(Vec<SymbolBase>),
 	Upper(Vec<SymbolUp>),

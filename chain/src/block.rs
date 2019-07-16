@@ -8,12 +8,15 @@ use bytes::Bytes;
 use coded_merkle_roots::coded_merkle_roots;
 use hash::H256;
 use merkle_root::merkle_root;
-use decoder::Code;
+use decoder::{Code, Symbol};
+use rand::distributions::{Distribution, Bernoulli, Uniform};
 
-#[derive(Debug, PartialEq, Clone, Serializable, Deserializable)]
+//#[derive(Debug, PartialEq, Clone, Serializable, Deserializable)]
+#[derive(Clone)]
 pub struct Block {
 	pub block_header: BlockHeader,
 	pub transactions: Vec<Transaction>,
+	pub coded_tree: Vec<Symbols>,
 }
 
 //a new type for a coding errors
@@ -32,6 +35,35 @@ pub fn next_index(index: u32, k: u32, reduce_factor: u32) -> u32 {
 	}
 }
 
+//randomly sample a parity sibling of a systematic symbols
+pub fn sample_parity_sibling(index: u32, n: u32, header_size: u32, reduce_factor: u32) -> u32 {
+    // Use the same symbol if v is true, otherwise use a random sibling sampled uniformly
+	let d = Bernoulli::new(RATE as f64).unwrap();
+    let v = d.sample(&mut rand::thread_rng());
+    if v == true {return index;}
+    else {
+    	let k = ((n as f32) * RATE) as u32;
+        let mut siblings: Vec<u32> =  vec![];
+
+    	if n > header_size {
+    		let parent: u32 = next_index(index, k, reduce_factor);
+    	for i in k..n {
+    		if next_index(i as u32, k, reduce_factor) == parent {
+    			siblings.push(i as u32);
+    		}
+    	}
+    } else {
+    	for i in k..n {
+    		siblings.push(i as u32);
+    	}
+    }
+    	let l = siblings.len();
+        let die = Uniform::from(0..l);
+        let throw = die.sample(&mut rand::thread_rng());
+        return siblings[throw];
+    }    
+}
+
 // pub fn next_index<T>(index: T, k: T, reduce_factor: T) -> T {
 // 	if index <= k - 1 {
 // 		index / reduce_factor
@@ -41,17 +73,19 @@ pub fn next_index(index: u32, k: u32, reduce_factor: u32) -> u32 {
 // 	}
 // }
 
-impl From<&'static str> for Block {
-	fn from(s: &'static str) -> Self {
-		deserialize(&s.from_hex::<Vec<u8>>().unwrap() as &[u8]).unwrap()
-	}
-}
+// impl From<&'static str> for Block {
+// 	fn from(s: &'static str) -> Self {
+// 		deserialize(&s.from_hex::<Vec<u8>>().unwrap() as &[u8]).unwrap()
+// 	}
+// }
 
 impl Block {
-	pub fn new(header: BlockHeader, transactions: Vec<Transaction>) -> Self {
-		Block { block_header: header, transactions: transactions}
-		//let (_, _, tree) = block.coded_merkle_roots(header.coded_merkle_roots_hashes.len(), header.rate);
-		//Block { block_header: header, transactions: transactions, coded_merkle_tree: tree}
+	pub fn new(header: BlockHeader, transactions: Vec<Transaction>, header_size: u32, codes: Vec<Code>) -> Self {
+		let block = Block { block_header: header.clone(), transactions: transactions.clone(), coded_tree: vec![]};
+		let (_, root_hashes, tree) = block.coded_merkle_roots(header_size, RATE, codes);
+		let mut new_header = header;
+		new_header.coded_merkle_roots_hashes = root_hashes;
+		Block { block_header: new_header, transactions: transactions.clone(), coded_tree: tree}
 	}
 
 	/// Returns block's merkle root.
@@ -104,16 +138,18 @@ impl Block {
 	//Returns a Merkle proof for some symbol index at some level of the coded merkle tree
     //A proof for a particular symbol is a list of symbols in the upper levels
 	//#[cfg(any(test, feature = "test-helpers"))]
-	pub fn merkle_proof(&self, lvl: usize, index: u32, codes: Vec<Code>) -> Vec<SymbolUp> {
+	pub fn merkle_proof(&self, lvl: usize, index: u32) -> (Vec<SymbolUp>, Vec<u32>) {
 		//Construct the coded Merkle tree
-		let header_size = self.block_header.coded_merkle_roots_hashes.len();
-		let (_, _, tree) = self.coded_merkle_roots((header_size as u32), RATE, codes);
+		//let header_size = self.block_header.coded_merkle_roots_hashes.len();
+		//let (_, _, tree) = self.coded_merkle_roots((header_size as u32), RATE, codes);
 
 		let mut proof = Vec::<SymbolUp>::new();
+		let mut proof_indices: Vec<u32> = vec![];
 		let mut moving_index = index;
 		let mut moving_k = 0;
 		let reduce_factor = ((AGGREGATE as f32) * RATE) as u32;
-		match &tree[lvl] {
+		//match &tree[lvl] {
+		match &self.coded_tree[lvl] {
 			Symbols::Base(syms) => {
 				moving_k = ((syms.len() as f32) * RATE) as u32;
 			}
@@ -121,14 +157,86 @@ impl Block {
 				moving_k = ((syms.len() as f32) * RATE) as u32;
 			}
 		}
-		for i in lvl..(tree.len() - 1) {
+		for i in lvl..(self.coded_tree.len() - 1) {
 			moving_index = next_index(moving_index, moving_k, reduce_factor);
-            if let Symbols::Upper(syms) = &tree[i + 1] {
-                proof.push(syms[(moving_index as usize)]);
+			proof_indices.push(moving_index.clone()); // add the index of a symbol in the proof
+            if let Symbols::Upper(syms) = &self.coded_tree[i + 1] {
+                proof.push(syms[(moving_index as usize)]); //add a new symbol to proof
             }
             moving_k = moving_k / reduce_factor;
 		}
-		proof
+		(proof, proof_indices)
+	}
+    
+    //take s random symbols from the base layer, and their Merkle proofs as symbols from other layers
+	pub fn sampling_to_decode(&self, s: u32) -> (Vec<Vec<Symbol>>, Vec<Vec<u64>>) {
+		let mut symbols_all_levels: Vec<Vec<Symbol>> = vec![];
+		let mut indices_all_levels: Vec<Vec<u64>> = vec![];
+		let reduce_factor = ((AGGREGATE as f32) * RATE) as u32;
+		let header_size = self.block_header.coded_merkle_roots_hashes.len();
+
+		if let Symbols::Base(syms) = &self.coded_tree[0] { // get the symbols on the base layer, syms is a vector of base symbols
+			let n = syms.len();
+
+            //Create random seed
+			let mut rng = rand::thread_rng();
+			//Create a random variable uniform between 0 to n-1
+			let die = Uniform::from(0..n);
+
+			let throw = die.sample(&mut rng); //sample a base index
+			let (up_symbols, up_indices) = self.merkle_proof(0, throw as u32); //obtain symbols on the upper layers and their indices
+			symbols_all_levels.push(vec![Symbol::Base(syms[throw].clone())]);
+			indices_all_levels.push(vec![throw.clone() as u64]);
+
+            //The sampled symbol is either the proof itself or one of its parity sibling
+			for j in 0..up_symbols.len() { 
+				if let Symbols::Upper(syms_up) = &self.coded_tree[j+1] {
+					let chosen_index = sample_parity_sibling(up_indices[j], syms_up.len() as u32, header_size as u32, reduce_factor);
+					let chosen_symbol = syms_up[chosen_index as usize]; //this symbols has type [H256; AGGREGATE]
+					//convert chosen_symbol to type Symbol 
+					let mut sym_byte = [0u8; 32 * AGGREGATE];
+					for t in 0..AGGREGATE {
+						let temp: [u8; 32] = chosen_symbol[t].clone().into();
+        		        sym_byte[t * 32 .. (t+1) * 32].copy_from_slice(&temp);
+        		    }
+        		    // push to symbols and indices
+					symbols_all_levels.push(vec![Symbol::Upper(sym_byte)]);
+			        indices_all_levels.push(vec![chosen_index as u64]);
+				}
+			}
+
+			for i in 1..s { //sample s times with replacement uniformly at random
+			    let die = Uniform::from(0..n);
+				let throw = die.sample(&mut rand::thread_rng()); //sample a base index
+				let (up_symbols, up_indices) = self.merkle_proof(0, throw as u32);
+
+				//push to base level if not seen before
+				if !indices_all_levels[0].contains(&(throw as u64)) {
+					symbols_all_levels[0].push(Symbol::Base(syms[throw].clone()));
+			        indices_all_levels[0].push(throw.clone() as u64);
+				}
+
+				//push to upper levels if not seen before
+				for j in 0..up_symbols.len() {
+					if let Symbols::Upper(syms_up) = &self.coded_tree[j+1] {
+						let chosen_index = sample_parity_sibling(up_indices[j], syms_up.len() as u32, header_size as u32, reduce_factor);
+						if !indices_all_levels[j+1].contains(&(chosen_index as u64)) {
+							let chosen_symbol = syms_up[chosen_index as usize]; //this symbols has type [H256; AGGREGATE]
+					        //convert chosen_symbol to type Symbol 
+					        let mut sym_byte = [0u8; 32 * AGGREGATE];
+			                for t in 0..AGGREGATE {
+				                let temp: [u8; 32] = chosen_symbol[t].clone().into();
+		                        sym_byte[t * 32 .. (t+1) * 32].copy_from_slice(&temp);
+		                    }
+		                    // push to symbols and indices
+			                symbols_all_levels[j+1].push(Symbol::Upper(sym_byte));
+	                        indices_all_levels[j+1].push(chosen_index as u64);
+	                    }
+			        }
+			    }
+			}
+		}
+		(symbols_all_levels, indices_all_levels)
 	}
 
 	pub fn transactions(&self) -> &[Transaction] {

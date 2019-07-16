@@ -9,25 +9,24 @@ extern crate rand;
 #[macro_use]
 extern crate serialization_derive;
 
-
 pub mod constants;
 
-mod block;
-mod block_header;
-mod merkle_root;
-mod coded_merkle_roots;
-mod transaction;
-mod decoder;
+pub mod block;
+pub mod block_header;
+pub mod merkle_root;
+pub mod coded_merkle_roots;
+pub mod transaction;
+pub mod decoder;
 //mod light_client;
 
 /// `IndexedBlock` extension
-mod read_and_hash;
+pub mod read_and_hash;
 //mod indexed_block;
 //mod indexed_header;
-mod indexed_transaction;
+pub mod indexed_transaction;
 
 pub use primitives::{hash, bytes, bigint, compact};
-pub use rand::distributions::{Distribution, Uniform};
+pub use rand::distributions::{Distribution, Bernoulli, Uniform};
 
 pub use decoder::{Symbol, Decoder, Code};
 pub use block::{Block, CodingErr};
