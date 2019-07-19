@@ -10,6 +10,7 @@ use hash::H256;
 use merkle_root::merkle_root;
 use decoder::{Code, Symbol};
 use rand::distributions::{Distribution, Bernoulli, Uniform};
+use CodingErr;
 
 //#[derive(Debug, PartialEq, Clone, Serializable, Deserializable)]
 #[derive(Clone)]
@@ -17,14 +18,8 @@ pub struct Block {
 	pub block_header: BlockHeader,
 	pub transactions: Vec<Transaction>,
 	pub coded_tree: Vec<Symbols>,
+	pub block_size_in_bytes: usize,
 }
-
-//a new type for a coding errors
-pub enum CodingErr{
-	NotZero,
-	NotHash,
-} 
-
 
 pub fn next_index(index: u32, k: u32, reduce_factor: u32) -> u32 {
 	if index <= k - 1 {
@@ -44,21 +39,20 @@ pub fn sample_parity_sibling(index: u32, n: u32, header_size: u32, reduce_factor
     else {
     	let k = ((n as f32) * RATE) as u32;
         let mut siblings: Vec<u32> =  vec![];
-
-    	if n > header_size {
-    		let parent: u32 = next_index(index, k, reduce_factor);
-    	for i in k..n {
-    		if next_index(i as u32, k, reduce_factor) == parent {
-    			siblings.push(i as u32);
-    		}
-    	}
-    } else {
-    	for i in k..n {
-    		siblings.push(i as u32);
-    	}
-    }
+			if n > header_size { //if this is not the last layer
+				let parent: u32 = next_index(index, k, reduce_factor);
+			    for i in k..n {
+				    if next_index(i as u32, k, reduce_factor) == parent {
+					    siblings.push(i as u32);
+				    }
+			    }
+			} else {
+			    for i in k..n {
+				    siblings.push(i as u32);
+			    }
+		    }
     	let l = siblings.len();
-        let die = Uniform::from(0..l);
+        let die = Uniform::from(0..l); //uniformly pick one sibling symbol to sample
         let throw = die.sample(&mut rand::thread_rng());
         return siblings[throw];
     }    
@@ -80,16 +74,21 @@ pub fn sample_parity_sibling(index: u32, n: u32, header_size: u32, reduce_factor
 // }
 
 impl Block {
-	pub fn new(header: BlockHeader, transactions: Vec<Transaction>, header_size: u32, codes: Vec<Code>) -> Self {
-		let block = Block { block_header: header.clone(), transactions: transactions.clone(), coded_tree: vec![]};
-		let (_, root_hashes, tree) = block.coded_merkle_roots(header_size, RATE, codes);
+	pub fn new(header: BlockHeader, transactions: Vec<Transaction>, block_size: usize, header_size: u32, 
+		codes: Vec<Code>, correct: Vec<bool>) -> Self {
+		// correct indicates if we will perform coding correctly or not on each level of the CMT
+		let block = Block {block_header: header.clone(), transactions: transactions.clone(), 
+			coded_tree: vec![], block_size_in_bytes: block_size};
+		//Compute coded Merkle tree and hashes of the last layer from the block content	
+		let (_, root_hashes, tree) = block.coded_merkle_roots(header_size, RATE, codes, correct);
 		let mut new_header = header;
+		new_header.merkle_root_hash = block.merkle_root();
 		new_header.coded_merkle_roots_hashes = root_hashes;
-		Block { block_header: new_header, transactions: transactions.clone(), coded_tree: tree}
+		Block { block_header: new_header, transactions: transactions.clone(), coded_tree: tree, block_size_in_bytes: block_size}
 	}
 
 	/// Returns block's merkle root.
-	#[cfg(any(test, feature = "test-helpers"))]
+	//#[cfg(any(test, feature = "test-helpers"))]
 	pub fn merkle_root(&self) -> H256 {
 		let hashes = self.transactions.iter().map(Transaction::hash).collect::<Vec<H256>>();
 		merkle_root(&hashes)
@@ -111,12 +110,32 @@ impl Block {
 
 	//Returns hashes of the symbols on the top layer of coded Merkle tree 
 	//#[cfg(any(test, feature = "test-helpers"))]
-	pub fn coded_merkle_roots(&self, header_size: u32, rate: f32, codes: Vec<Code>) -> (usize, Vec<H256>, Vec<Symbols>) {
+	pub fn coded_merkle_roots(&self, header_size: u32, rate: f32, codes: Vec<Code>, correct: Vec<bool>) -> (usize, Vec<H256>, Vec<Symbols>) {
+		//Convert transactions into bytes and concatenate them into a Vec<u8>
 		let mut trans_byte = self.transactions.iter().map(Transaction::bytes).collect::<Vec<Bytes>>();
 		let mut data: Vec<u8> = vec![];
 		for j in 0..trans_byte.len(){
 			data.append(&mut trans_byte[j].clone().into());
 		}
+
+		let transactions_size_in_bytes = data.len();
+
+		//Append random data to meet target BLOCK_SIZE
+		if transactions_size_in_bytes < self.block_size_in_bytes {
+			for _ in 0..(self.block_size_in_bytes - transactions_size_in_bytes) {
+				let die = Uniform::from(0u8..=255u8);
+				let new_byte = die.sample(&mut rand::thread_rng());
+				data.push(new_byte);
+			}
+		}
+		//generate fake transaction data of size self.block_size_in_bytes bytes
+		// let mut data: Vec<u8> = vec![];
+		// for j in 0..self.block_size_in_bytes {
+		// 	let die = Uniform::from(0u8..=255u8);
+   //           let new_byte = die.sample(&mut rand::thread_rng());
+		// 	data.push(new_byte);
+		// }
+
 		let original_size = data.len();
 		if original_size% BASE_SYMBOL_SIZE > 0 {
 			let padding = (original_size/BASE_SYMBOL_SIZE + 1) * BASE_SYMBOL_SIZE - original_size;
@@ -131,7 +150,7 @@ impl Block {
 			symbol.copy_from_slice(&data[l * BASE_SYMBOL_SIZE .. (l + 1) * BASE_SYMBOL_SIZE]);
 			symbols.push(symbol);
 		}
-		let (roots, tree) = coded_merkle_roots(&symbols, header_size, rate, codes);
+		let (roots, tree) = coded_merkle_roots(&symbols, header_size, rate, codes, correct);
 		(original_size, roots, tree)
 	}
 

@@ -26,10 +26,14 @@ pub const SATOSHIS_IN_COIN: u64 = 100_000_000;
 
 
 //Configuration file for construction of coded Merkle tree
+
+//size of a block 
+pub const BLOCK_SIZE: u64 = 10000000;
+
 //size of a symbol on the base layer in bytes
 pub const BASE_SYMBOL_SIZE: usize = 128;
 
-//number if hashes to aggregate to form a new symbol on the upper layers of CMT
+//number of hashes to aggregate to form a new symbol on the upper layers of CMT
 pub const AGGREGATE: usize = 8;
 
 //coding rate for code ensemble

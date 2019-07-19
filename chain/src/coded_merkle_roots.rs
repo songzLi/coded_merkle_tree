@@ -21,6 +21,7 @@ pub enum Symbols{
 } 
 
 
+//Convert a data object with type Vec<Symbol> to an object with type Symbols
 pub fn layer_to_layer_convert(symbols: Vec<Symbol>) -> Symbols {
 	match symbols[0] {
 		Symbol::Base(x) => {
@@ -144,7 +145,8 @@ fn hash_aggregate(coded: &Symbols, rate: f32) -> Symbols{
 }
 
 // Calculates the roots of the coded Merkle tree
-pub fn coded_merkle_roots(symbols: &[SymbolBase], header_size: u32, rate: f32, codes: Vec<Code>) -> (Vec<H256>, Vec<Symbols>) {
+pub fn coded_merkle_roots(symbols: &[SymbolBase], header_size: u32, rate: f32, codes: Vec<Code>, correct: Vec<bool>) 
+-> (Vec<H256>, Vec<Symbols>) { //the variable correct indicates whether the coding is done correctly or incorrectly by malicious block producer
     let data = pad(symbols, rate);
     let n = ((data.len() as f32) / rate) as u32;
     let level = ((((n/header_size) as f32).log2()/(rate * (AGGREGATE as f32)).log2()) as u32) + 1;
@@ -161,17 +163,18 @@ pub fn coded_merkle_roots(symbols: &[SymbolBase], header_size: u32, rate: f32, c
     	sys_symbols_base.push(Symbol::Base(data[j]));
     }
     //Construct base layer
-    tree.push(layer_to_layer_convert(base_layer.encode(sys_symbols_base)));
+    tree.push(layer_to_layer_convert(base_layer.encode(sys_symbols_base, correct[0])));
 
     // Construct upper layers
     for i in 0..(level-1) {
+    	//Construct the systematic data for level i by aggregating the hashes of the coded data on level i-1
     	let new_data: Symbols = hash_aggregate(&tree[i as usize], rate); // data type is Symbols::Upper(Vec<SymbolUp>)
     	// Initialize decoder/encoder for layer i+1
         let mut upper_layer: Decoder = Decoder::new((i+1) as u32, 
         	codes[(i+1) as usize].parities.to_vec(), codes[(i+1) as usize].symbols.to_vec());
+        
         let mut sys_symbols_upper: Vec<Symbol> = vec![];
-
-        //Convert new_data to Vec<Symbol>
+        //Convert new_data to Vec<Symbol> for encoder
         if let Symbols::Upper(ss) = new_data {
         	for t in 0..ss.len() {
         		let mut upp_sym: [u8; 32 * AGGREGATE] = [0u8; 32 * AGGREGATE];
@@ -183,7 +186,7 @@ pub fn coded_merkle_roots(symbols: &[SymbolBase], header_size: u32, rate: f32, c
         	}
         }
         //Encode and convert back to Symbols::Upper(Vec<SymbolUp>)
-    	tree.push(layer_to_layer_convert(upper_layer.encode(sys_symbols_upper)));
+    	tree.push(layer_to_layer_convert(upper_layer.encode(sys_symbols_upper, correct[(i+1) as usize])));
     }
     (compute_hash(&tree[tree.len()-1]), tree)
 }

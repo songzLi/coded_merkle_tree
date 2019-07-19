@@ -4,7 +4,7 @@ use std::ops::BitXor;
 use {Symbols, SymbolBase, SymbolUp};
 use hash::H256;
 use crypto::dhash256;
-use CodingErr;
+use rand::distributions::{Distribution, Bernoulli, Uniform};
 
 #[derive(Clone, Copy)]
 pub enum Symbol {
@@ -13,13 +13,22 @@ pub enum Symbol {
 	Empty,
 } 
 
+//a new type for a coding errors
+pub enum CodingErr{
+	NotZero,
+	NotHash,
+	Stopped,
+} 
+
 pub struct IncorrectCodingProof {
 	pub error_type: CodingErr,
 	pub level: u32,
 	pub symbols: Vec<Symbol>,
 	pub indices: Vec<u64>,
 	pub parity_index: u64,
-	pub proofs: Vec<Vec<Symbol>>
+	pub proofs: Vec<Vec<Symbol>>,
+	pub stop_set: Vec<u64>,
+	pub stop_ratio: f32
 }
 
 #[derive(Clone)]
@@ -28,7 +37,6 @@ pub struct Code {
 	pub parities: Vec<Vec<u64>>,
 	pub symbols: Vec<Vec<u64>>,
 }
-
 
 pub struct TreeDecoder {
 	pub n: u64, //block length of code on the base layer of the tree
@@ -127,6 +135,7 @@ fn symbol_equal_to_zero(symbol: Symbol) -> bool {
 	flag
 }
 
+//index of the parent symbol on the coded Merkle tree
 fn next_index(index: u64, k: u64, reduce_factor: u64) -> u64 {
 	if index <= k - 1 {
 		index / reduce_factor
@@ -147,14 +156,15 @@ fn remove_one_item(vector: &Vec<u64>, item: &u64) -> Vec<u64> {
 	new_vec
 }
 
-
 impl TreeDecoder {
 	//Decode coded Merkle tree after receiving enough symbols on each level
 	pub fn run_tree_decoder(&mut self, symbols_all_levels: Vec<Vec<Symbol>>, indices_all_levels: Vec<Vec<u64>>) 
-	-> Result<Vec<Decoder>, IncorrectCodingProof> {
+	//-> Result<Vec<Decoder>, IncorrectCodingProof> {
+	-> Result<(), IncorrectCodingProof> {
+		//hashes of the symbols being decoded. For top layer, they are stored in the header
 		let mut hash_proof = self.hashes[(self.height - 1) as usize].clone();
 
-		//Iterate decoding starting from the top layer of coded Merkle tree
+		//Iterate decoding starting from the top level of coded Merkle tree
 		for i in (0..self.height).rev() {
 			let received_symbols = symbols_all_levels[i as usize].clone();
 			let received_indices = indices_all_levels[i as usize].clone();
@@ -177,12 +187,12 @@ impl TreeDecoder {
 						}
 						println!("NotZero incorrect coding detected on layer {} for parity equation #{}.",i,j);
 						return Err(self.generate_incorrect_coding_proof(CodingErr::NotZero, i, 
-							j as u64, error_symbols, error_indices));
+							j as u64, error_symbols, error_indices, vec![], 1.0));
 					} 
 				}
 			}
 
-            //Already received all coded symbols
+            //Already received all coded symbols and all parity equations are satisfied
 			if decoded {
 				if i > 0 {
 					//decoding done for layer i, use the systematic symbols as the hash proof for previous layer
@@ -190,7 +200,8 @@ impl TreeDecoder {
 				    hash_proof = self.hashes[(i-1) as usize].clone();
 				    continue;	
 				} else {
-					return Ok(self.decoders.clone());
+					//return Ok(self.decoders.clone());
+					return Ok(()); //Entire coded Merkle tree is decoded
 				}							
 			}
 
@@ -217,11 +228,11 @@ impl TreeDecoder {
 						            }
 						            println!("NotZero incorrect coding detected on layer {} for parity equation #{}.",i,j);
 						            return Err(self.generate_incorrect_coding_proof(CodingErr::NotZero, i, 
-						            	j as u64, error_symbols, error_indices));
+						            	j as u64, error_symbols, error_indices, vec![], 1.0));
 					                } 
 				                }
 			                }
-			                if finished { //decoding is done for layer i
+			                if finished { //decoding is correctly done for layer i 
 			                	if i > 0 { //not the base layer yet
 					            //decoding done for layer i, use the systematic symbols as the hash proof for previous layer
 				                    self.hashes[(i-1) as usize] = symbol_to_hash(&self.decoders[i as usize].symbol_values[0..(self.decoders[i as usize].k as usize)].to_vec());
@@ -229,7 +240,8 @@ impl TreeDecoder {
 				                    decoded = finished;
 				                    break;
 				                } else { //base layer decoded
-				                	return Ok(self.decoders.clone());
+				                	//return Ok(self.decoders.clone());
+				                	return Ok(());
 				                } 				                
 				            } else { //decoding for layer i needs to continue 
 				            	continue;
@@ -237,20 +249,32 @@ impl TreeDecoder {
 						},
 						Err((err_level, err_parity, index_set, proof_symbols)) => { //some decoded symbols do not pass hash test
 							return Err(self.generate_incorrect_coding_proof(CodingErr::NotHash, err_level, 
-						            	err_parity, proof_symbols, index_set));
+						            	err_parity, proof_symbols, index_set, vec![], 1.0));
 						}
 					} 
 				} else {
-					// no more progress can be made
-					panic!("Hitting a stopping set at level {}. Decoding failured.", i);
-				}
+					//no more progress can be made, a stopping set is hidden
+					//construct the indices of the stopping set
+					let mut stopping_set = vec![];
+					for sym_idx in 0..self.decoders[i as usize].n {
+						if let Symbol::Empty = self.decoders[i as usize].symbol_values[sym_idx as usize] {
+							stopping_set.push(sym_idx.clone());
+						}
+					}
+					let stopping_ratio = (stopping_set.len() as f32) / (self.decoders[i as usize].n as f32);
 
+					println!("Hitting a stopping set at level {}. Decoding failed with a stopping ratio of {}.", i, stopping_ratio);
+					//panic!("Hitting a stopping set at level {}. Decoding failured.", i);
+					return Err(self.generate_incorrect_coding_proof(CodingErr::Stopped, i as u32, 
+						    0u64, vec![], vec![], stopping_set, stopping_ratio));
+				}
 			}
 			if decoded {
 				if i > 0 {
 					continue;
 				} else {
-					return Ok(self.decoders.clone());
+					//return Ok(self.decoders.clone());
+					return Ok(());
 				}
 			} 
 		}
@@ -258,7 +282,7 @@ impl TreeDecoder {
 		//Ok(self.decoders.clone())
 	}
 
-
+    //Initialize the tree decoder
 	pub fn new(codes: Vec<Code>, header_hash: Vec<H256>) -> Self {
 		let num_layers = codes.len();
 		let base_length: u64 = codes[0].symbols.len() as u64;
@@ -296,8 +320,8 @@ impl TreeDecoder {
 		proof
 	}
 
-	pub fn generate_incorrect_coding_proof(&self, err_type: CodingErr, lvl: u32, parity: u64, symbols: Vec<Symbol>, indices: Vec<u64>)
-	-> IncorrectCodingProof {
+	pub fn generate_incorrect_coding_proof(&self, err_type: CodingErr, lvl: u32, parity: u64, 
+		symbols: Vec<Symbol>, indices: Vec<u64>, stopping_set: Vec<u64>, stopping_ratio: f32) -> IncorrectCodingProof {
 		let mut merkle_proofs: Vec<Vec<Symbol>> = vec![];
 		for i in 0..indices.len() {
 			merkle_proofs.push(self.generate_merkle_proof(lvl as usize, indices[i]));
@@ -308,7 +332,9 @@ impl TreeDecoder {
 	        symbols: symbols,
 	        indices: indices,
 	        parity_index: parity,
-	        proofs: merkle_proofs
+	        proofs: merkle_proofs,
+	        stop_set: stopping_set,
+	        stop_ratio: stopping_ratio
 	    }
 	}
 }
@@ -316,17 +342,17 @@ impl TreeDecoder {
 
 impl Decoder {
 	pub fn new(level: u32, parities: Vec<Vec<u64>>, symbols: Vec<Vec<u64>>) -> Self {
-		let n: u64 = symbols.len() as u64;
-		let p: u64 = parities.len() as u64;
-		let k = n - p;
+		let n: u64 = symbols.len() as u64; //number of coded symbols
+		let p: u64 = parities.len() as u64; //number of parity nodes
+		let k: u64 = ((n as f32) * RATE) as u64; //number of systematic symbols
 
-		let mut parity_deg = vec![0u32; p as usize];
+		let mut parity_deg = vec![0u32; p as usize]; //number of variable nodes a parity node is connected to, this changes during peeling decoding
 		for i in 0..(p as usize) {
 			parity_deg[i] = parities[i].len() as u32; 
 		}
 
-		let mut parity_val = Vec::<Symbol>::new(); 
-		let mut symbol_val = Vec::<Symbol>::new(); 
+		let mut parity_val = Vec::<Symbol>::new(); //values of parity nodes
+		let mut symbol_val = Vec::<Symbol>::new(); //values of variable nodes
 
 		match level {
 			0 => {
@@ -357,6 +383,7 @@ impl Decoder {
 		}
 	}
 
+    //decode new symbols simply from receiving them
 	pub fn symbol_update_from_reception(&mut self, symbols: Vec<Symbol>, symbol_indices: Vec<u64>) -> (Vec<Symbol>,
 		Vec<u64>, bool) {
 		let mut out_symbols = Vec::<Symbol>::new();
@@ -370,14 +397,16 @@ impl Decoder {
         		if symbol_indices[i] < self.k {
         			self.num_decoded_sys_symbols += 1;
         		}
-        	}
-        	out_symbols.push(symbols[i].clone());
-        	out_indices.push(symbol_indices[i].clone());
+        		//output the updated symbols for future peeling decoding
+        		out_symbols.push(symbols[i].clone());
+        	    out_indices.push(symbol_indices[i].clone());
+        	}        
         }
 
         (out_symbols, out_indices, self.num_decoded_symbols == self.n)
 	}
 
+    //Update the values of parity nodes using decoded/received symbols
 	pub fn parity_update(&mut self, symbols: Vec<Symbol>, symbol_indices: Vec<u64>) -> bool {
 		if  symbols.len() == 0 {
 			return self.degree_1_parities.len() != 0;
@@ -391,6 +420,7 @@ impl Decoder {
 				match (self.parity_values[*parity as usize], s) {
 					(Symbol::Base(x), Symbol::Base(y)) => {
 						let mut sum: [u8; BASE_SYMBOL_SIZE] = x.clone();
+						//XOR the symbols with the parity node
 						for j in 0..BASE_SYMBOL_SIZE {
 							sum[j] = sum[j].bitxor(y[j]);
 						} 
@@ -398,12 +428,13 @@ impl Decoder {
 					},
 					(Symbol::Upper(x), Symbol::Upper(y)) => {
 						let mut sum: [u8; 32 * AGGREGATE] = x.clone();
+						//XOR the symbols with the parity node
 						for j in 0..(32 * AGGREGATE) {
 							sum[j] = sum[j].bitxor(y[j]);
 						} 
 						self.parity_values[*parity as usize] = Symbol::Upper(sum);
 					},
-					(_, _) => (),
+					(_, _) => {},
 				}
 				self.parity_degree[*parity as usize] -= 1;
 				if self.parity_degree[*parity as usize] == 1 {
@@ -442,7 +473,7 @@ impl Decoder {
  //        (symbols, symbol_indices, self.num_decoded_symbols == self.n)
 	// }
 
-
+    //Decode symbols using values of degree 1 parities. Decoding error may occur if the decoded symbol does not match its hash.
 	pub fn symbol_update_from_degree_1_parities(&mut self, hashes: &Vec<H256>) 
 	-> Result<(Vec<Symbol>, Vec<u64>, bool), (u32, u64, Vec<u64>, Vec<Symbol>)> {
 		let mut symbols = Vec::<Symbol>::new();
@@ -452,6 +483,7 @@ impl Decoder {
         	let parity = self.degree_1_parities[i].clone();
         	if self.parities[parity as usize].len() > 0 {
         		let symbol_idx = self.parities[parity as usize][0];
+        		// The only symbol connected to this parity node has not been decoded yet
         		if let Symbol::Empty = self.symbol_values[symbol_idx as usize] {
         			self.symbol_values[symbol_idx as usize] = self.parity_values[parity as usize]; //Symbol decoded
 
@@ -470,7 +502,7 @@ impl Decoder {
         			    symbols.push(self.parity_values[parity as usize].clone());
                         symbol_indices.push(symbol_idx.clone());
                     } else {//coding is done incorrectly, return an incorrect-coding message
-                    	println!("Incorrect coding detected on layer {} for parity equation #{}.",self.level,parity);
+                    	println!("NotHash incorrect coding detected on layer {} for parity equation #{}.",self.level,parity);
                     	// Preparing info for constructing incorrect-coding proof
                     	let index_set: Vec<u64> = self.code.parities[parity as usize].clone();
                     	let mut correct_index_set: Vec<u64> = remove_one_item(&index_set, &symbol_idx);
@@ -502,7 +534,8 @@ impl Decoder {
 	// 		return self.num_decoded_symbols == self.n;
 	// 	}
 	// }
-
+    
+    //obtain new parity symbols through decoding from systematic symbols
 	pub fn symbol_update_from_degree_1_parities_encode(&mut self) -> (Vec<Symbol>, Vec<u64>, bool) {
 		let mut symbols = Vec::<Symbol>::new();
         let mut symbol_indices = Vec::<u64>::new();
@@ -539,8 +572,9 @@ impl Decoder {
 		}
 	}
 
-	//Encoding by decoding all coded symbols from systematic symbols 
-	pub fn encode(&mut self, sys_symbols: Vec<Symbol>) -> Vec<Symbol> {
+	//Encoding by decoding all coded symbols from systematic symbols. 
+	//The variable correct indicates if the encoding will be done correctly
+	pub fn encode(&mut self, sys_symbols: Vec<Symbol>, correct: bool) -> Vec<Symbol> {
 		let mut indices = vec![];//indices of sysmtematic symbols
 		for i in 0..self.k {
 			indices.push(i as u64);
@@ -556,7 +590,39 @@ impl Decoder {
 				unreachable!(); //encoding will succeed if all systematic symbols are given
 			}
 		}
-		self.symbol_values.clone()
+		let mut output_symbols = self.symbol_values.clone();
+		if !correct { // randomly swap the 1st systematic symbol and the 1st parity symbol (kth symbol overall)
+			if self.level == 0 { //This is base layer
+				let mut systematic = [0u8; BASE_SYMBOL_SIZE];
+				for j in 0..BASE_SYMBOL_SIZE {
+					let die = Uniform::from(0u8..=255u8);
+					systematic[j] = die.sample(&mut rand::thread_rng());
+			    }
+			    let mut parity = [0u8; BASE_SYMBOL_SIZE];
+				for l in 0..BASE_SYMBOL_SIZE {
+					let die = Uniform::from(0u8..=255u8);
+					parity[l] = die.sample(&mut rand::thread_rng());
+			    }
+			    //One systematic and one parity symbol are maliciously modified
+			    output_symbols[0] = Symbol::Base(systematic);
+			    output_symbols[self.k as usize] = Symbol::Base(parity);
+			} else { //This is higher layer
+				let mut systematic = [0u8; 32 * AGGREGATE];
+				for j in 0..(32 * AGGREGATE) {
+					let die = Uniform::from(0u8..=255u8);
+					systematic[j] = die.sample(&mut rand::thread_rng());
+			    }
+			    let mut parity = [0u8; 32 * AGGREGATE];
+				for l in 0..(32 * AGGREGATE) {
+					let die = Uniform::from(0u8..=255u8);
+					parity[l] = die.sample(&mut rand::thread_rng());
+			    }
+			    //One systematic and one parity symbol are maliciously modified
+			    output_symbols[0] = Symbol::Upper(systematic);
+			    output_symbols[self.k as usize] = Symbol::Upper(parity);
+			}
+		}
+		output_symbols
 	}
 }
 

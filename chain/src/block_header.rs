@@ -133,7 +133,7 @@ impl BlockHeader {
 						}
 						println!("Invalid incorrect-coding proof. Symbols sum up to zero.");
 						return false;
-					}
+					},
 					NotHash => {
 						let mut missing = [0u8; BASE_SYMBOL_SIZE];
 						for j in 0..BASE_SYMBOL_SIZE {
@@ -147,7 +147,8 @@ impl BlockHeader {
 							println!("Invalid incorrect-coding proof. Decoded symbol passes Merkle proof verification.");
 						    return false;
 						}
-					}
+					},
+					_ => {unreachable!();}
 				}
 			}
 			Symbols::Upper(err_symbols) => {

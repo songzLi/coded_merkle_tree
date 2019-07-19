@@ -111,7 +111,7 @@ impl HeapSizeOf for Transaction {
 }
 
 impl Transaction {
-	#[cfg(any(test, feature = "test-helpers"))]
+	//#[cfg(any(test, feature = "test-helpers"))]
 	pub fn hash(&self) -> H256 {
 		transaction_hash(self)
 	}
