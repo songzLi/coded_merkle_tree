@@ -201,6 +201,7 @@ impl TreeDecoder {
 				    continue;	
 				} else {
 					//return Ok(self.decoders.clone());
+					println!("Coded Merkle tree successfully decoded.");
 					return Ok(()); //Entire coded Merkle tree is decoded
 				}							
 			}
@@ -241,6 +242,7 @@ impl TreeDecoder {
 				                    break;
 				                } else { //base layer decoded
 				                	//return Ok(self.decoders.clone());
+				                	println!("Coded Merkle tree successfully decoded.");
 				                	return Ok(());
 				                } 				                
 				            } else { //decoding for layer i needs to continue 
@@ -274,6 +276,7 @@ impl TreeDecoder {
 					continue;
 				} else {
 					//return Ok(self.decoders.clone());
+					println!("Coded Merkle tree successfully decoded.");
 					return Ok(());
 				}
 			} 
@@ -283,7 +286,7 @@ impl TreeDecoder {
 	}
 
     //Initialize the tree decoder
-	pub fn new(codes: Vec<Code>, header_hash: Vec<H256>) -> Self {
+	pub fn new(codes: Vec<Code>, header_hash: &Vec<H256>) -> Self {
 		let num_layers = codes.len();
 		let base_length: u64 = codes[0].symbols.len() as u64;
 		let mut decs: Vec<Decoder> = vec![];
@@ -294,7 +297,7 @@ impl TreeDecoder {
 			decs.push(dec);
 			hash_list.push(vec![H256::default();code.symbols.len()]);
 		}
-		hash_list[num_layers-1] = header_hash;
+		hash_list[num_layers-1] = header_hash.to_vec();
 
 		TreeDecoder {
 			n: base_length,
@@ -565,9 +568,13 @@ impl Decoder {
 			let (symbols, symbol_indices, encoded) = self.symbol_update_from_degree_1_parities_encode();
 			if encoded { return encoded; }
 			if symbols.len() > 0 { // new symbols get decoded
-				let keep_peeling = self.parity_update(symbols, symbol_indices);
-				if keep_peeling {continue;}
+				let keep_peeling = self.parity_update(symbols, symbol_indices); 
+				//println!("The current parities vector is {:?}", self.parities);
+				//println!("The set of degree-1 parity nodes are {:?}.", self.degree_1_parities);
+				//println!("It is {} that more parity values are available.", keep_peeling);
+				if keep_peeling {continue;} //new degree-1 parity created
 			}
+			println!("{} out of {} symbols are decoded.", self.num_decoded_symbols, self.n);
 			return self.num_decoded_symbols == self.n;
 		}
 	}
@@ -581,8 +588,13 @@ impl Decoder {
 		}
 		let (symbols, symbol_indices, encoded) = self.symbol_update_from_reception(sys_symbols, indices);
 		loop {
-			if encoded {break;}
+			if encoded {
+			    //println!("All {} coded symbols are received.", self.n);	
+				break;
+			}
 			if self.parity_update(symbols, symbol_indices) {
+			    //println!("The current parities vector is {:?}.", self.parities);
+			    //println!("Now we have these degree-1 parity nodes: {:?}.", self.degree_1_parities);
 				if self.peeling_encode() {break;}
 				else {unreachable!();} //encoding will succeed if all systematic symbols are given
 			}
@@ -591,35 +603,47 @@ impl Decoder {
 			}
 		}
 		let mut output_symbols = self.symbol_values.clone();
-		if !correct { // randomly swap the 1st systematic symbol and the 1st parity symbol (kth symbol overall)
+		if !correct { // flip the 1st parity symbol (kth symbol overall)
 			if self.level == 0 { //This is base layer
-				let mut systematic = [0u8; BASE_SYMBOL_SIZE];
-				for j in 0..BASE_SYMBOL_SIZE {
-					let die = Uniform::from(0u8..=255u8);
-					systematic[j] = die.sample(&mut rand::thread_rng());
-			    }
+				// let mut systematic = [0u8; BASE_SYMBOL_SIZE];
+				// for j in 0..BASE_SYMBOL_SIZE {
+				// 	let die = Uniform::from(0u8..=255u8);
+				// 	systematic[j] = die.sample(&mut rand::thread_rng());
+			 //    }
+			 //    let mut parity = [0u8; BASE_SYMBOL_SIZE];
+				// for l in 0..BASE_SYMBOL_SIZE {
+				// 	let die = Uniform::from(0u8..=255u8);
+				// 	parity[l] = die.sample(&mut rand::thread_rng());
+			 //    }
 			    let mut parity = [0u8; BASE_SYMBOL_SIZE];
-				for l in 0..BASE_SYMBOL_SIZE {
-					let die = Uniform::from(0u8..=255u8);
-					parity[l] = die.sample(&mut rand::thread_rng());
+			    if let Symbol::Base(sym) = self.symbol_values[self.k as usize] {
+			    	for l in 0..BASE_SYMBOL_SIZE {
+					    parity[l] = sym[l].bitxor(255u8);
+					}
 			    }
-			    //One systematic and one parity symbol are maliciously modified
-			    output_symbols[0] = Symbol::Base(systematic);
+			    //The first parity symbol is maliciously modified
+			    //output_symbols[0] = Symbol::Base(systematic);
 			    output_symbols[self.k as usize] = Symbol::Base(parity);
 			} else { //This is higher layer
-				let mut systematic = [0u8; 32 * AGGREGATE];
-				for j in 0..(32 * AGGREGATE) {
-					let die = Uniform::from(0u8..=255u8);
-					systematic[j] = die.sample(&mut rand::thread_rng());
+				// let mut systematic = [0u8; 32 * AGGREGATE];
+				// for j in 0..(32 * AGGREGATE) {
+				// 	let die = Uniform::from(0u8..=255u8);
+				// 	systematic[j] = die.sample(&mut rand::thread_rng());
+			 //    }
+			 //    let mut parity = [0u8; 32 * AGGREGATE];
+				// for l in 0..(32 * AGGREGATE) {
+				// 	let die = Uniform::from(0u8..=255u8);
+				// 	parity[l] = die.sample(&mut rand::thread_rng());
+			 //    }
+			    let mut parity_up = [0u8; 32 * AGGREGATE];
+			    if let Symbol::Upper(sym_up) = self.symbol_values[self.k as usize] {
+			    	for l in 0..(32 * AGGREGATE) {
+					    parity_up[l] = sym_up[l].bitxor(255u8);
+					}
 			    }
-			    let mut parity = [0u8; 32 * AGGREGATE];
-				for l in 0..(32 * AGGREGATE) {
-					let die = Uniform::from(0u8..=255u8);
-					parity[l] = die.sample(&mut rand::thread_rng());
-			    }
-			    //One systematic and one parity symbol are maliciously modified
-			    output_symbols[0] = Symbol::Upper(systematic);
-			    output_symbols[self.k as usize] = Symbol::Upper(parity);
+			    //The first parity symbol is maliciously modified
+			    //output_symbols[0] = Symbol::Upper(systematic);
+			    output_symbols[self.k as usize] = Symbol::Upper(parity_up);
 			}
 		}
 		output_symbols

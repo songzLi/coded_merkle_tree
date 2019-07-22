@@ -74,17 +74,20 @@ pub fn sample_parity_sibling(index: u32, n: u32, header_size: u32, reduce_factor
 // }
 
 impl Block {
-	pub fn new(header: BlockHeader, transactions: Vec<Transaction>, block_size: usize, header_size: u32, 
-		codes: Vec<Code>, correct: Vec<bool>) -> Self {
+	pub fn new(header: BlockHeader, transactions: &Vec<Transaction>, block_size: usize, header_size: u32, 
+		codes: &Vec<Code>, correct: Vec<bool>) -> Self {
 		// correct indicates if we will perform coding correctly or not on each level of the CMT
-		let block = Block {block_header: header.clone(), transactions: transactions.clone(), 
+		// let block = Block {block_header: header.clone(), transactions: transactions.clone(), 
+		// 	coded_tree: vec![], block_size_in_bytes: block_size};
+
+		let block = Block {block_header: header.clone(), transactions: transactions.to_vec(), 
 			coded_tree: vec![], block_size_in_bytes: block_size};
 		//Compute coded Merkle tree and hashes of the last layer from the block content	
-		let (_, root_hashes, tree) = block.coded_merkle_roots(header_size, RATE, codes, correct);
+		let (_, root_hashes, tree) = block.coded_merkle_roots(header_size, RATE, codes.to_vec(), correct);
 		let mut new_header = header;
 		new_header.merkle_root_hash = block.merkle_root();
 		new_header.coded_merkle_roots_hashes = root_hashes;
-		Block { block_header: new_header, transactions: transactions.clone(), coded_tree: tree, block_size_in_bytes: block_size}
+		Block { block_header: new_header, transactions: transactions.to_vec(), coded_tree: tree, block_size_in_bytes: block_size}
 	}
 
 	/// Returns block's merkle root.
