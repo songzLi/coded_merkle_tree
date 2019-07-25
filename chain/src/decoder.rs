@@ -6,6 +6,8 @@ use hash::H256;
 use crypto::dhash256;
 use rand::distributions::{Distribution, Bernoulli, Uniform};
 
+// Symbols on the base layer can have different size as the upper layer
+// The value of symbol is empty before it is decoded
 #[derive(Clone, Copy)]
 pub enum Symbol {
 	Base([u8; BASE_SYMBOL_SIZE]),
@@ -13,13 +15,17 @@ pub enum Symbol {
 	Empty,
 } 
 
-//a new type for a coding errors
+// a new type indicating types of coding errors
+// NotZero: symbols in a parity equation does not sum up to zero
+// NotHash: decoded symbol does not match its hash
+// Stopped: peeling decoder cannot continue due to absence of degree-one parity node 
 pub enum CodingErr{
 	NotZero,
 	NotHash,
 	Stopped,
 } 
 
+// a full node sends an incorrect-coding proof if it detects errors during decoding
 pub struct IncorrectCodingProof {
 	pub error_type: CodingErr,
 	pub level: u32,
@@ -31,13 +37,16 @@ pub struct IncorrectCodingProof {
 	pub stop_ratio: f32
 }
 
+//A code is specified by its parity-check matrix, which is represented by parities or symbols vectors
 #[derive(Clone)]
-//A code is specified by its parity-check matrix, which is represented by parities and symbols vectors
 pub struct Code {
 	pub parities: Vec<Vec<u64>>,
 	pub symbols: Vec<Vec<u64>>,
 }
 
+// Decoder for CMT
+// contains a decoder for each layer of CMT
+// hashes are hashes of the coded symbols on the last (top) layer
 pub struct TreeDecoder {
 	pub n: u64, //block length of code on the base layer of the tree
 	pub height: u32,
@@ -47,20 +56,20 @@ pub struct TreeDecoder {
 
 #[derive(Clone)]
 pub struct Decoder {
-	pub level: u32,
-	pub n: u64,
-	pub k: u64,
-	pub p: u64,
+	pub level: u32, // layer index of CMT
+	pub n: u64, // # of coded symbols
+	pub k: u64, // # of systematic symbols
+	pub p: u64, // # of parity check equations
 
 	pub code: Code, //code shall not change during decoding
 
-	pub parities: Vec<Vec<u64>>,
-	pub symbols: Vec<Vec<u64>>,
+	pub parities: Vec<Vec<u64>>, // vector of length p, each element is a vector indicating the variable nodes connected to a parity node
+	pub symbols: Vec<Vec<u64>>, // vector of length n, each element is a vector indicating the parity nodes connected to a variable node
 
-	pub symbol_values: Vec<Symbol>,
-    pub parity_values: Vec<Symbol>,
-    pub parity_degree: Vec<u32>,
-    pub degree_1_parities: Vec<u64>, 
+	pub symbol_values: Vec<Symbol>, // values of variable nodes
+    pub parity_values: Vec<Symbol>, //values of parity nodes
+    pub parity_degree: Vec<u32>, 
+    pub degree_1_parities: Vec<u64>, // set of parity nodes whose degree is 1 during decoding
 
     pub num_decoded_sys_symbols: u64,
     pub num_decoded_symbols: u64,
@@ -109,8 +118,7 @@ fn symbol_to_hash(symbols: &Vec<Symbol>) -> Vec<H256> {
 	previous_hashes
 }
 
-
-//return if a symbol is equal to zero or not
+//return if a symbol is equal to zero or not (every byte equals to 0u8)
 fn symbol_equal_to_zero(symbol: Symbol) -> bool {
 	let mut flag = true;
 	match symbol {
@@ -159,7 +167,7 @@ fn remove_one_item(vector: &Vec<u64>, item: &u64) -> Vec<u64> {
 impl TreeDecoder {
 	//Decode coded Merkle tree after receiving enough symbols on each level
 	pub fn run_tree_decoder(&mut self, symbols_all_levels: Vec<Vec<Symbol>>, indices_all_levels: Vec<Vec<u64>>) 
-	//-> Result<Vec<Decoder>, IncorrectCodingProof> {
+	//-> Result<Vec<Decoder>, IncorrectCodingProof> {	
 	-> Result<(), IncorrectCodingProof> {
 		//hashes of the symbols being decoded. For top layer, they are stored in the header
 		let mut hash_proof = self.hashes[(self.height - 1) as usize].clone();
@@ -176,9 +184,9 @@ impl TreeDecoder {
 			let mut progress = self.decoders[i as usize].parity_update(new_symbols, new_symbol_indices);
 			//parity nodes are updated, now check if there is any incorrect coding
 			for j in 0..self.decoders[i as usize].p {
-				if self.decoders[i as usize].parity_degree[j as usize] == 0 { //all symbols associated to this parity are known
+				if self.decoders[i as usize].parity_degree[j as usize] == 0 { //all symbols associated to parity node j are known
 					if !symbol_equal_to_zero(self.decoders[i as usize].parity_values[j as usize]) {
-						//construct incorrect coding proof
+						//construct NotZero incorrect coding proof
 						let error_indices = self.decoders[i as usize].code.parities[j as usize].clone();
 						let mut error_symbols: Vec<Symbol> = vec![];
 						
@@ -195,7 +203,7 @@ impl TreeDecoder {
             //Already received all coded symbols and all parity equations are satisfied
 			if decoded {
 				if i > 0 {
-					//decoding done for layer i, use the systematic symbols as the hash proof for previous layer
+					//decoding done for layer i, use the systematic symbols as the hash proof for previous layer, and continue to previous layer
 				    self.hashes[(i-1) as usize] = symbol_to_hash(&self.decoders[i as usize].symbol_values[0..(self.decoders[i as usize].k as usize)].to_vec());
 				    hash_proof = self.hashes[(i-1) as usize].clone();
 				    continue;	
@@ -255,8 +263,8 @@ impl TreeDecoder {
 						}
 					} 
 				} else {
-					//no more progress can be made, a stopping set is hidden
-					//construct the indices of the stopping set
+					//no more progress can be made, a stopping set is found
+					//construct a Stopped incorrect-coding proof using the indices of the encountered stopping set
 					let mut stopping_set = vec![];
 					for sym_idx in 0..self.decoders[i as usize].n {
 						if let Symbol::Empty = self.decoders[i as usize].symbol_values[sym_idx as usize] {
@@ -265,8 +273,8 @@ impl TreeDecoder {
 					}
 					let stopping_ratio = (stopping_set.len() as f32) / (self.decoders[i as usize].n as f32);
 
-					println!("Hitting a stopping set at level {}. Decoding failed with a stopping ratio of {}.", i, stopping_ratio);
-					//panic!("Hitting a stopping set at level {}. Decoding failured.", i);
+					println!("Hitting a stopping set at layer {}. Decoding failed with a stopping ratio of {}.", i, stopping_ratio);
+					//panic!("Hitting a stopping set at layer {}. Decoding failured.", i);
 					return Err(self.generate_incorrect_coding_proof(CodingErr::Stopped, i as u32, 
 						    0u64, vec![], vec![], stopping_set, stopping_ratio));
 				}
@@ -344,6 +352,7 @@ impl TreeDecoder {
 
 
 impl Decoder {
+	// Initialize the decoder for a layer of CMT 
 	pub fn new(level: u32, parities: Vec<Vec<u64>>, symbols: Vec<Vec<u64>>) -> Self {
 		let n: u64 = symbols.len() as u64; //number of coded symbols
 		let p: u64 = parities.len() as u64; //number of parity nodes
@@ -401,6 +410,7 @@ impl Decoder {
         			self.num_decoded_sys_symbols += 1;
         		}
         		//output the updated symbols for future peeling decoding
+        		//the output is a subset of input
         		out_symbols.push(symbols[i].clone());
         	    out_indices.push(symbol_indices[i].clone());
         	}        
@@ -519,7 +529,8 @@ impl Decoder {
                 } 
             }
         }
-
+        // value of the coded symbol connected to a degree 1 parity node is updated
+        // remove this connection and set the degree_1_parities set to empty
         self.degree_1_parities = vec![];
 
         Ok((symbols, symbol_indices, self.num_decoded_symbols == self.n))
@@ -538,6 +549,7 @@ impl Decoder {
 	// 	}
 	// }
     
+    //this function encodes systematic symbols to obtain parity symbols, using the same decoding process
     //obtain new parity symbols through decoding from systematic symbols
 	pub fn symbol_update_from_degree_1_parities_encode(&mut self) -> (Vec<Symbol>, Vec<u64>, bool) {
 		let mut symbols = Vec::<Symbol>::new();
@@ -564,6 +576,7 @@ impl Decoder {
     }
 
 	pub fn peeling_encode(&mut self) -> bool {
+		// iterative encoding/decoding until all parity symbols are found
 		loop {
 			let (symbols, symbol_indices, encoded) = self.symbol_update_from_degree_1_parities_encode();
 			if encoded { return encoded; }
@@ -574,27 +587,32 @@ impl Decoder {
 				//println!("It is {} that more parity values are available.", keep_peeling);
 				if keep_peeling {continue;} //new degree-1 parity created
 			}
+			// this part is unreachable during encoding
 			println!("{} out of {} symbols are decoded.", self.num_decoded_symbols, self.n);
 			return self.num_decoded_symbols == self.n;
 		}
 	}
 
-	//Encoding by decoding all coded symbols from systematic symbols. 
-	//The variable correct indicates if the encoding will be done correctly
+	//Encoding by decoding all parity symbols from systematic symbols
+	//The variable "correct" indicates if the encoding will be done correctly
 	pub fn encode(&mut self, sys_symbols: Vec<Symbol>, correct: bool) -> Vec<Symbol> {
 		let mut indices = vec![];//indices of sysmtematic symbols
 		for i in 0..self.k {
 			indices.push(i as u64);
 		}
+		// to start, feed systematic symbols into the decoder
 		let (symbols, symbol_indices, encoded) = self.symbol_update_from_reception(sys_symbols, indices);
 		loop {
 			if encoded {
 			    //println!("All {} coded symbols are received.", self.n);	
 				break;
 			}
+			// more degree 1 parity nodes are available, we can continue encoding
 			if self.parity_update(symbols, symbol_indices) {
 			    //println!("The current parities vector is {:?}.", self.parities);
 			    //println!("Now we have these degree-1 parity nodes: {:?}.", self.degree_1_parities);
+
+			    // n parity symbols are created, since decoding/encoding will always be successful from the systematic symbols
 				if self.peeling_encode() {break;}
 				else {unreachable!();} //encoding will succeed if all systematic symbols are given
 			}
@@ -650,82 +668,82 @@ impl Decoder {
 	}
 }
 
-#[cfg(test)]
-mod tests {
-	use rand::thread_rng;
-    use rand::seq::SliceRandom;
-	use super::*;
+// #[cfg(test)]
+// mod tests {
+// 	use rand::thread_rng;
+//     use rand::seq::SliceRandom;
+// 	use super::*;
 
-	//Test for decoder for a (2,4)-regular LDPC code with (n,k) = (8,4)
-	#[test]
-	fn test_peeling_decoder1() {
-		// let mut vec: Vec<u64> = (0..16).collect();
-  //       vec.shuffle(&mut thread_rng());
+// 	//Test for decoder for a (2,4)-regular LDPC code with (n,k) = (8,4)
+// 	#[test]
+// 	fn test_peeling_decoder1() {
+// 		// let mut vec: Vec<u64> = (0..16).collect();
+//   //       vec.shuffle(&mut thread_rng());
 
-  //       let mut symbols: Vec<Vec<u64>> = vec![];
-  //       for i in 0..8 {
-  //       	symbols.push(vec![vec[2*i]/4, vec[2*i+1]/4]);
-  //       }
+//   //       let mut symbols: Vec<Vec<u64>> = vec![];
+//   //       for i in 0..8 {
+//   //       	symbols.push(vec![vec[2*i]/4, vec[2*i+1]/4]);
+//   //       }
 
-		// let mut parities: Vec<Vec<u64>> = vec![];
-		// for i in 0..4 {
-		// 	let mut parity = vec![];
-		// 	for j in 0..8 {
-		// 		if symbols[j].contains(&i) {
-		// 			parity.push(j as u64);
-		// 		}
-		// 	}
-		// 	parities.push(parity);
-		// }
+// 		// let mut parities: Vec<Vec<u64>> = vec![];
+// 		// for i in 0..4 {
+// 		// 	let mut parity = vec![];
+// 		// 	for j in 0..8 {
+// 		// 		if symbols[j].contains(&i) {
+// 		// 			parity.push(j as u64);
+// 		// 		}
+// 		// 	}
+// 		// 	parities.push(parity);
+// 		// }
 
-		let symbols: Vec<Vec<u64>> = vec![
-		vec![0, 1], vec![1, 2], vec![2, 3], vec![3, 0], vec![0, 3], vec![1, 2], vec![2, 1], vec![3, 0]
-		]; 
+// 		let symbols: Vec<Vec<u64>> = vec![
+// 		vec![0, 1], vec![1, 2], vec![2, 3], vec![3, 0], vec![0, 3], vec![1, 2], vec![2, 1], vec![3, 0]
+// 		]; 
 
-		let parities: Vec<Vec<u64>> = vec![
-		vec![0, 3, 4, 7], vec![0, 1, 6, 5], vec![1, 2, 5, 6], vec![2, 3, 4, 7]
-		];  
+// 		let parities: Vec<Vec<u64>> = vec![
+// 		vec![0, 3, 4, 7], vec![0, 1, 6, 5], vec![1, 2, 5, 6], vec![2, 3, 4, 7]
+// 		];  
 
-		let mut decoder = Decoder::new(0, parities, symbols);
-		println!("Decoder initialized.");
+// 		let mut decoder = Decoder::new(0, parities, symbols);
+// 		println!("Decoder initialized.");
 
-		// let mut symbol_arrive: Vec<u64> = (0..8).collect();
-		// symbol_arrive.shuffle(&mut thread_rng());
-		let symbol_arrive: Vec<u64> = vec![3, 5, 7, 0, 4, 2, 6, 1];
-		let mut count = 0;
-		println!("Checkpoint.");
+// 		// let mut symbol_arrive: Vec<u64> = (0..8).collect();
+// 		// symbol_arrive.shuffle(&mut thread_rng());
+// 		let symbol_arrive: Vec<u64> = vec![3, 5, 7, 0, 4, 2, 6, 1];
+// 		let mut count = 0;
+// 		println!("Checkpoint.");
 
-		loop {
-			let (symbols, symbol_indices, decoded) = decoder.symbol_update_from_reception(
-				vec![Symbol::Base([0u8;BASE_SYMBOL_SIZE])], vec![symbol_arrive[count]]);
-			if decoded {break;}
-			if decoder.parity_update(symbols, symbol_indices) {
-				if decoder.peeling_decode() {break;}
-			}
-			count += 1;
-		}
-		println!("Finish decoding using {} coded symbols.", count + 1);
+// 		loop {
+// 			let (symbols, symbol_indices, decoded) = decoder.symbol_update_from_reception(
+// 				vec![Symbol::Base([0u8;BASE_SYMBOL_SIZE])], vec![symbol_arrive[count]]);
+// 			if decoded {break;}
+// 			if decoder.parity_update(symbols, symbol_indices) {
+// 				if decoder.peeling_decode() {break;}
+// 			}
+// 			count += 1;
+// 		}
+// 		println!("Finish decoding using {} coded symbols.", count + 1);
 
-		let mut flag = true;
-		for i in 0..8 {			
-			if let Symbol::Base(decoded) = decoder.symbol_values[i] {
-				for j in 0..BASE_SYMBOL_SIZE {
-					if decoded[j] != 0u8 {
-						flag = false;
-						break;
-					}
-				}				
-			}
-			if flag == false {break;}
-		}
-		assert_eq!(flag, true);
-	}
+// 		let mut flag = true;
+// 		for i in 0..8 {			
+// 			if let Symbol::Base(decoded) = decoder.symbol_values[i] {
+// 				for j in 0..BASE_SYMBOL_SIZE {
+// 					if decoded[j] != 0u8 {
+// 						flag = false;
+// 						break;
+// 					}
+// 				}				
+// 			}
+// 			if flag == false {break;}
+// 		}
+// 		assert_eq!(flag, true);
+// 	}
 
-	// #[test]
-	// fn test_peeling_decoder2() {
+// 	// #[test]
+// 	// fn test_peeling_decoder2() {
 
-	// }
-}
+// 	// }
+// }
 
 
 

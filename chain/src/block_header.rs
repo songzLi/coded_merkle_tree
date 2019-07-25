@@ -29,6 +29,8 @@ impl BlockHeader {
 	}
 
 	// Verify the Merkle proof of an upper symbol using the hashes in the block header
+	// Proof is a vector of symbols all the way to the top layer of CMT
+	// Return true if the symbol passes the Merkle proof check, false otherwise
 	//#[cfg(any(test, feature = "test-helpers"))]
 	pub fn verify_up(&self, symbol: SymbolUp, lvl: u32, index: u32, block_size: u32, proof: &Vec<SymbolUp>) -> bool {
 		let reduce_factor = ((AGGREGATE as f32) * RATE) as u32;
@@ -38,7 +40,9 @@ impl BlockHeader {
 		let mut current_k = block_size / u32::pow(reduce_factor, lvl);
 
 		for s in proof.iter() {
+			// hash_index is the index of next hash to compare with in the next symbol in the proof
 			let mut hash_index = 0;
+
 			// current symbol is a systematic symbol
 			if current_index <= current_k - 1 {
 				hash_index = current_index % reduce_factor;
@@ -82,6 +86,7 @@ impl BlockHeader {
         }
     }
 
+    // Verify the Merkle proof of a base symbol using the hashes in the block header
     //#[cfg(any(test, feature = "test-helpers"))]
 	pub fn verify_base(&self, symbol: SymbolBase, index: u32, block_size: u32, proof: &Vec<SymbolUp>) -> bool {
 		let reduce_factor = ((AGGREGATE as f32) * RATE) as u32;
@@ -106,8 +111,11 @@ impl BlockHeader {
 			}
 		}
 
-
-    //Verify that a malicious block producer does not do coding correctly, return true if the verification passes, or the coding is not correct
+    // This is a functionality at the light nodes
+    // Verify that a malicious block producer does not do coding correctly, return true if the verification passes (or equivalently the coding is not done correct)
+    // Proof is a set of symbols in the same layer that violate some encoding rules. merkle_proofs are their Merkle proofs
+    // Error NotZero means all symbols of a parity equation does not sum up to zero. 
+    // Error NotHash measn a symbol decoded from a parity equation does not match its hash.
 	pub fn verify_incorrect_coding(&self, proof: Symbols, lvl: u32, index: Vec<u32>, block_size: u32, merkle_proofs: Vec<Vec<SymbolUp>>, error_type: CodingErr) -> bool {
 		match proof {
 			Symbols::Base(err_symbols) => {
@@ -141,6 +149,8 @@ impl BlockHeader {
 								missing[j] = missing[j].bitxor(err_symbols[i][j]);
 							}
 						}
+						// We put the index of the to-be-decoded symbol as the last element of index
+						// So for NotHash error, the size of index & merkle_proofs is one larger than the size of proof
 						if !self.verify_base(missing, index[index.len()-1], block_size, &merkle_proofs[merkle_proofs.len()-1]) {
 						    return true;
 						} else {
@@ -203,13 +213,15 @@ impl BlockHeader {
 							decode[k] = H256::from(h); 
 						}
 
+						// We put the index of the to-be-decoded symbol as the last element of index
 						if !self.verify_up(decode, lvl, index[index.len()-1], block_size, &merkle_proofs[merkle_proofs.len()-1]) {
 						    return true;
 						} else {
 							println!("Invalid incorrect-coding proof. Decoded symbol passes Merkle proof verification.");
 						    return false;
 						}
-					}
+					},
+					_ => {unreachable!();}
 				}
 			}
 		}

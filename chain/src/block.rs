@@ -17,10 +17,12 @@ use CodingErr;
 pub struct Block {
 	pub block_header: BlockHeader,
 	pub transactions: Vec<Transaction>,
-	pub coded_tree: Vec<Symbols>,
-	pub block_size_in_bytes: usize,
+	pub coded_tree: Vec<Symbols>, //Coded Merkle tree constructed from the transactions in the block
+	pub block_size_in_bytes: usize, // size of transactions in the block, used to specify block size for tests
 }
 
+// index of the parent symbol on the coded Merkle tree
+// k is number of systematic symbols in the current layer
 pub fn next_index(index: u32, k: u32, reduce_factor: u32) -> u32 {
 	if index <= k - 1 {
 		index / reduce_factor
@@ -30,7 +32,8 @@ pub fn next_index(index: u32, k: u32, reduce_factor: u32) -> u32 {
 	}
 }
 
-//randomly sample a parity sibling of a systematic symbols
+// randomly sample a parity sibling of a systematic symbols
+// a parity sibling refers to a parity symbol that shares the same parent symbol as the systematic symbol
 pub fn sample_parity_sibling(index: u32, n: u32, header_size: u32, reduce_factor: u32) -> u32 {
     // Use the same symbol if v is true, otherwise use a random sibling sampled uniformly
 	let d = Bernoulli::new(RATE as f64).unwrap();
@@ -74,18 +77,23 @@ pub fn sample_parity_sibling(index: u32, n: u32, header_size: u32, reduce_factor
 // }
 
 impl Block {
+	// construct a block 
+	// correct indicates if we will perform coding correctly or not on each level of the CMT
 	pub fn new(header: BlockHeader, transactions: &Vec<Transaction>, block_size: usize, header_size: u32, 
 		codes: &Vec<Code>, correct: Vec<bool>) -> Self {
-		// correct indicates if we will perform coding correctly or not on each level of the CMT
 		// let block = Block {block_header: header.clone(), transactions: transactions.clone(), 
-		// 	coded_tree: vec![], block_size_in_bytes: block_size};
+		// coded_tree: vec![], block_size_in_bytes: block_size};
 
 		let block = Block {block_header: header.clone(), transactions: transactions.to_vec(), 
 			coded_tree: vec![], block_size_in_bytes: block_size};
-		//Compute coded Merkle tree and hashes of the last layer from the block content	
+		//Compute coded Merkle tree and hashes of the last layer from the transactions	
 		let (_, root_hashes, tree) = block.coded_merkle_roots(header_size, RATE, codes.to_vec(), correct);
 		let mut new_header = header;
+		// Merkle root from transactions
+		// base unit is transaction
 		new_header.merkle_root_hash = block.merkle_root();
+		// Root hashes of CMT from transactions
+		// base unit is symbol
 		new_header.coded_merkle_roots_hashes = root_hashes;
 		Block { block_header: new_header, transactions: transactions.to_vec(), coded_tree: tree, block_size_in_bytes: block_size}
 	}
@@ -139,6 +147,7 @@ impl Block {
 		// 	data.push(new_byte);
 		// }
 
+        // pad zeros to make the base layer integer number of base symbols
 		let original_size = data.len();
 		if original_size% BASE_SYMBOL_SIZE > 0 {
 			let padding = (original_size/BASE_SYMBOL_SIZE + 1) * BASE_SYMBOL_SIZE - original_size;
@@ -153,6 +162,7 @@ impl Block {
 			symbol.copy_from_slice(&data[l * BASE_SYMBOL_SIZE .. (l + 1) * BASE_SYMBOL_SIZE]);
 			symbols.push(symbol);
 		}
+		// construct CMT and the root hashes
 		let (roots, tree) = coded_merkle_roots(&symbols, header_size, rate, codes, correct);
 		(original_size, roots, tree)
 	}
@@ -164,7 +174,8 @@ impl Block {
 		//Construct the coded Merkle tree
 		//let header_size = self.block_header.coded_merkle_roots_hashes.len();
 		//let (_, _, tree) = self.coded_merkle_roots((header_size as u32), RATE, codes);
-
+        
+        // A proof is a vector of symbols on the upper layers of CMT, one from each layer
 		let mut proof = Vec::<SymbolUp>::new();
 		let mut proof_indices: Vec<u32> = vec![];
 		let mut moving_index = index;
@@ -179,6 +190,7 @@ impl Block {
 				moving_k = ((syms.len() as f32) * RATE) as u32;
 			}
 		}
+		// find the index of next symbol in the proof on the next layer of CMT
 		for i in lvl..(self.coded_tree.len() - 1) {
 			moving_index = next_index(moving_index, moving_k, reduce_factor);
 			proof_indices.push(moving_index.clone()); // add the index of a symbol in the proof
@@ -205,17 +217,19 @@ impl Block {
 			//Create a random variable uniform between 0 to n-1
 			let die = Uniform::from(0..n);
 
-			let throw = die.sample(&mut rng); //sample a base index
+			let throw = die.sample(&mut rng); //sample a symbol index on the base layer
 			let (up_symbols, up_indices) = self.merkle_proof(0, throw as u32); //obtain symbols on the upper layers and their indices
 			symbols_all_levels.push(vec![Symbol::Base(syms[throw].clone())]);
 			indices_all_levels.push(vec![throw.clone() as u64]);
-
-            //The sampled symbol is either the proof itself or one of its parity sibling
+             
+            // Each sample in the proof is a symbol for its own layer 
+            // To uniformly sample upper layer, we randomly choose the sampled symbol on the upper layer
+            // as either the proof itself or one of its parity sibling (chosen uniformly at random)
 			for j in 0..up_symbols.len() { 
 				if let Symbols::Upper(syms_up) = &self.coded_tree[j+1] {
 					let chosen_index = sample_parity_sibling(up_indices[j], syms_up.len() as u32, header_size as u32, reduce_factor);
 					let chosen_symbol = syms_up[chosen_index as usize]; //this symbols has type [H256; AGGREGATE]
-					//convert chosen_symbol to type Symbol 
+					//convert chosen_symbol to type "Symbol" 
 					let mut sym_byte = [0u8; 32 * AGGREGATE];
 					for t in 0..AGGREGATE {
 						let temp: [u8; 32] = chosen_symbol[t].clone().into();

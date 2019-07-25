@@ -23,7 +23,7 @@ use rand::distributions::{Distribution, Bernoulli, Uniform};
 use chain::block_header::BlockHeader;
 use chain::transaction::{Transaction, TransactionInput, TransactionOutput, OutPoint};
 use chain::block::Block;
-use chain::constants::{BLOCK_SIZE, BASE_SYMBOL_SIZE, AGGREGATE, RATE, HEADER_SIZE};
+use chain::constants::{BLOCK_SIZE, BASE_SYMBOL_SIZE, AGGREGATE, RATE, HEADER_SIZE, NUMBER_ITERATION};
 use chain::coded_merkle_roots::{Symbols, SymbolBase, SymbolUp, coded_merkle_roots};
 use chain::merkle_root::merkle_root;
 use chain::decoder::{Code, Symbol, Decoder, TreeDecoder, CodingErr, IncorrectCodingProof};
@@ -44,7 +44,7 @@ fn read_code_from_file(k: u64) -> (Code, Code) {
 	let n = ((k as f32) / RATE ) as u64;
 
 	//Read encoding matrix
-	let filename = String::from("src/k=") + &k.to_string() + &String::from("_encode.txt");
+	let filename = String::from("src/codes/k=") + &k.to_string() + &String::from("_encode.txt");
     // Open the file in read-only mode (ignoring errors).
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
@@ -58,7 +58,7 @@ fn read_code_from_file(k: u64) -> (Code, Code) {
     }
 
     //Read decodeing matrix
-    let filename = String::from("src/k=") + &k.to_string() + &String::from("_decode.txt");
+    let filename = String::from("src/codes/k=") + &k.to_string() + &String::from("_decode.txt");
     // Open the file in read-only mode (ignoring errors).
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
@@ -101,7 +101,7 @@ fn read_codes(k_set: Vec<u64>) -> (Vec<Code>, Vec<Code>) {
 	(codes_for_encoding, codes_for_decoding)
 }
 
-fn test(block: &Block, num_samples: Vec<u32>, codes_for_decoding: &Vec<Code>) -> Vec<Result<(), IncorrectCodingProof>> {
+fn test(block: &Block, num_samples: &Vec<u32>, codes_for_decoding: &Vec<Code>) -> Vec<Result<(), IncorrectCodingProof>> {
 	let mut decoding_results = vec![];
 	//Try different sample sizes to decode
 	for s in num_samples.iter() {
@@ -150,7 +150,7 @@ fn main() {
 
 	let transactions: Vec<Transaction> = vec![t.into();num_transactions as usize];
     
-    let k_set: Vec<u64> = vec![16, 4];
+    let k_set: Vec<u64> = vec![512, 256, 128, 64];
     let (codes_for_encoding, codes_for_decoding) = read_codes(k_set);
 
     //Start tests
@@ -160,8 +160,24 @@ fn main() {
     let block: Block = Block::new(header_1, &transactions, BLOCK_SIZE as usize, HEADER_SIZE, &codes_for_encoding, vec![true; codes_for_encoding.len()]);
     
     //block decoding
-    let num_samples = vec![50];
-    let decoding_results: Vec<Result<(), IncorrectCodingProof>> = test(&block, num_samples, &codes_for_decoding); 
+    let num_samples = vec![1500, 1600, 1700, 1800, 1900, 2000];
+    let mut successful_decoding_probability: Vec<f32> = vec![0.0;num_samples.len()];
+    for i in 0..NUMBER_ITERATION { //try over 1000 times, each time randomly takes num_samples symbols
+    	let decoding_results: Vec<Result<(), IncorrectCodingProof>> = test(&block, &num_samples, &codes_for_decoding); 
+    	for j in 0..num_samples.len() {
+    		match &decoding_results[j] {
+    			Ok(()) => {
+    				successful_decoding_probability[j] += 1.0/(NUMBER_ITERATION as f32);
+    			},
+    			Err(proof) => {},
+    		}
+    	}
+    }
+    for j in 0..num_samples.len() {
+    	println!("The probability of successful decoding with {} randomly sampled symbols is {}.", num_samples[j], successful_decoding_probability[j]);
+    } 
+    
+
     
     //Test 2: With incorrect coding
 
@@ -170,12 +186,14 @@ fn main() {
     error_pattern[0] = false;
     //error_pattern[1] = false;
     
-    //block encoding with bit flipped parity symbols 
+    //block encoding with the bits of first parity symbol flipped 
 	let block: Block = Block::new(header_2, &transactions, BLOCK_SIZE as usize, HEADER_SIZE, &codes_for_encoding, error_pattern);
     
     //block decoding
-	let num_samples = vec![64];
-    let decoding_results: Vec<Result<(), IncorrectCodingProof>> = test(&block, num_samples, &codes_for_decoding); 
+	let num_samples = vec![2048];
+	for i in 0..10 { //run for 10 times, each time the error should be caught
+        let decoding_results: Vec<Result<(), IncorrectCodingProof>> = test(&block, &num_samples, &codes_for_decoding);
+    } 
 }
 
 
