@@ -1,4 +1,4 @@
-# Chain
+# Chain for Coded Merkle Tree
 
 In this crate, we implement _coded Merkle tree_ (CMT) for parity Bitcoin blocks.
 
