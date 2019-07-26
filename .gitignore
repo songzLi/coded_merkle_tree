@@ -15,3 +15,7 @@
 
 # idea ide
 .idea
+
+# codes with large dimension
+k=4096_encode.txt
+k=8192_encode.txt
