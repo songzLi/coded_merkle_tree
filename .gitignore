@@ -19,3 +19,6 @@
 # codes with large dimension
 k=4096_encode.txt
 k=8192_encode.txt
+k=16384_encode.txt
+k=32768_encode.txt
+k=65536_encode.txt
