@@ -4,85 +4,20 @@ In this crate, we implement _coded Merkle tree_ (CMT) for parity Bitcoin blocks.
 
 ## Overview
 We add the following modules to impplement CMT.
-* coded_merkle_roots
-* decoder
+* Coded Merkle Roots
+* Decoder
 
 We modify the following modules of parity Bitcoin block to reflect the addition of CMT.
-* block_header
-* block
-
-Various reference LDPC codes are included in the LDPC_codes folder. Each code has a encode file and a decode file.
-
-
-### `block_header.rs`
-
-
-
-
-
-### Witnesses and SegWit
-
-**Preface**: here I will try to give the minimal context surrounding segwit as is necessary to understand why witnesses exist in terms of blocks, block headers, and transactions. 
-
-SegWit is defined in [BIP141](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki).
-
-A witness is defined as:
-> The witness is a serialization of all witness data of the transaction. 
-
-Most importantly:
-> Witness data is NOT script.
-
-Thus:
-> A non-witness program (defined hereinafter) txin MUST be associated with an empty witness field, represented by a 0x00. If all txins are not witness program, a transaction's wtxid is equal to its txid.
-
-*Regular Transaction Id vs. Witness Transaction Id*
-
-* Regular transaction id:
-```[nVersion][txins][txouts][nLockTime]```
-* Witness transaction id:
- ```[nVersion][marker][flag][txins][txouts][witness][nLockTime]```
-
-A `witness root hash` is calculated with all those `wtxid` as leaves, in a way similar to the `hashMerkleRoot` in the block header.
-
-In the transaction, there are two different script fields:
-* **script_sig**: original/old signature script ([BIP16](https://github.com/bitcoin/bips/blob/master/bip-0016.mediawiki)/P2SH)
-* **script_witness**: witness script
-
-Depending on the content of these two fields and the scriptPubKey, witness validation logic may be triggered. Here are the two cases (note these definitions are straight from the BIP so may be quite dense):
-
-1. **Native witness program**: *a scriptPubKey that is exactly a push of a version byte, plus a push of a witness program. The scriptSig must be exactly empty or validation fails.*
-
-2. **P2SH witness program**: *a scriptPubKey is a P2SH script, and the BIP16 redeemScript pushed in the scriptSig is exactly a push of a version byte plus a push of a witness program. The scriptSig must be exactly a push of the BIP16 redeemScript or validation fails.*
-
-[Here](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki#witness-program) are the nitty gritty details of how witnesses and scripts work together -- this goes into the fine details of how the above situations are implemented.
-
-Here are a couple StackOverflow Questions/Answers that help clarify some of the above information:
-
-* [What's the purpose of ScriptSig in a SegWit transaction?](https://bitcoin.stackexchange.com/questions/49372/whats-the-purpose-of-scriptsig-in-a-segwit-transaction)
-* [Can old wallets redeem segwit outputs it receives? If so how?](https://bitcoin.stackexchange.com/questions/50254/can-old-wallets-redeem-segwit-outputs-it-receives-if-so-how?rq=1)
-
-
-### Coinbase
-Whenever a miner mines a block, it includes a special transaction called a coinbase transaction. This transaction has no inputs and creates X bitcoins equal to the current block reward (at this time 12.5) which are awarded to the miner of the block. Read more about the coinbase transaction [here](https://github.com/bitcoinbook/bitcoinbook/blob/f8b883dcd4e3d1b9adf40fed59b7e898fbd9241f/ch10.asciidoc#the-coinbase-transaction).
-
-**Need a more visual demonstration of the above information? Check out [this awesome website](https://anders.com/blockchain/).**
-
-## Crate Dependencies
-#### 1. [rustc-hex](https://crates.io/crates/rustc-hex): 
-*Serialization and deserialization support from hexadecimal strings.*
-
-**One thing to note**: *This crate is deprecated in favor of [`serde`](https://serde.rs/). No new feature development will happen in this crate, although bug fixes proposed through PRs will still be merged. It is very highly recommended by the Rust Library Team that you use [`serde`](https://serde.rs/), not this crate.*
-
-#### 2. [heapsize](https://crates.io/crates/heapsize): 
-*infrastructure for measuring the total runtime size of an object on the heap*
-
-#### 3. Crates from within the Parity Bitcoin Repo:
-* bitcrypto (crypto)
-* primitives
-* serialization
-* serialization_derive
+* Block 
+* Block Header
 
 ## Crate Content
+
+### Coded Merkle Tree (coded_merkle_roots.rs)
+
+
+### Decoder (decoder.rs)
+
 
 ### Block (block.rs)
 A relatively straight forward implementation of the data structure described above. A `block` is a rust `struct`. It implements the following traits:
@@ -112,6 +47,16 @@ The `block header` only has a single method of its own, the `hash` method that r
 
 ### Constants (constants.rs)
 There are a few constants included in this crate. Since these are nicely documented, documenting them here would be redundant. [Here](https://doc.rust-lang.org/rust-by-example/custom_types/constants.html) you can read more about constants in rust.
+
+### Tests (main.rs)
+
+
+
+
+
+Various reference LDPC codes are included in the LDPC_codes folder. Each code has a encode file and a decode file.
+
+
 
 ### Read and Hash (read_and_hash.rs)
 This is a small file that deals with the reading and hashing of serialized data, utilizing a few nifty rust features. 
