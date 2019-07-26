@@ -14,151 +14,126 @@ We modify the following modules of parity Bitcoin block to reflect the addition 
 ## Crate Content
 
 ### Coded Merkle Tree (coded_merkle_roots.rs)
+Transactions in a block are serialized and partitioned into symbols with type `SymbolBase`. Encode k base symbols to generate n coded symbols. We use systematic codes such that the first k coded symbols are the original data symbols. This forms the first layer of CMT.
 
+To construct the next layer of CMT, we 
+1. Compute the hashes of the coded symbols on the base layer.
+2. Aggregate `AGGREGATE` hashes using `hash_aggregate` into multiple symbols of type `SymbolUp`
+3. Encode these symbols using the code for this layer
+Repeat this process until the number of coded symbols in a layer is as small as `header_size`. 
+
+``` rust
+pub fn coded_merkle_roots(symbols: &[SymbolBase], header_size: u32, rate: f32, codes: Vec<Code>, correct: Vec<bool>) 
+-> (Vec<H256>, Vec<Symbols>)
+```
+constructs a CMT for a block from `symbols` which are transactions of the block.
+* `header_size` indicates the number of symbols on the last layer of CMT
+* `rate` is the coding rate
+* `codes` is a vector of LDPC codes used for all layers of CMT
+* `correct` indicates if we perform the encoding correctly according to `codes`. Used for tests.
+*  Output contains the hashes of the symbols on the last layer, and the CMT itself 
 
 ### Decoder (decoder.rs)
+This module implements decoding/encoding symbols on CMT using peeling decoder for LDPC codes.
 
+Decoder for CMT: 
+``` rust
+pub struct TreeDecoder {
+	pub n: u64, //block length of code on the base layer of the tree
+	pub height: u32, 
+	pub decoders: Vec<Decoder>, 
+	pub hashes: Vec<Vec<H256>> //hashes of all layers
+}
+```
+Decoder for a single layer of CMT:
+``` rust
+pub struct Decoder {
+	pub level: u32, // layer index of CMT
+	pub n: u64, // # of coded symbols
+	pub k: u64, // # of systematic symbols
+	pub p: u64, // # of parity check equations
+
+	pub code: Code, //code shall not change during decoding
+
+	pub parities: Vec<Vec<u64>>, // vector of length p, each element is a vector indicating the variable nodes connected to a parity node
+	pub symbols: Vec<Vec<u64>>, // vector of length n, each element is a vector indicating the parity nodes connected to a variable node
+
+	pub symbol_values: Vec<Symbol>, // values of variable nodes
+        pub parity_values: Vec<Symbol>, //values of parity nodes
+        pub parity_degree: Vec<u32>, 
+        pub degree_1_parities: Vec<u64>, // set of parity nodes whose degree is 1 during decoding
+
+        pub num_decoded_sys_symbols: u64,
+        pub num_decoded_symbols: u64,
+}
+```
+`symbol_update_from_reception`, `parity_update`, and `symbol_update_from_degree_1_parities` together implement the peeling decoder, which iteratively decode symbols from degree-1 parity equations.
+
+`run_tree_decoder` decodes the CMT from the top layer to the base layer. The decoding of each layer is hash protected. Once decoded, the systematic symbols on a layer is used as the hashes of the coded symbols on the previous layer. Using these hash values, the following three coding errors can be detected by the decoder:
+``` rust
+pub enum CodingErr{
+	NotZero, // symbols in a parity equation does not sum up to zero
+	NotHash, // decoded symbol does not match its hash
+	Stopped, // peeling decoder cannot continue due to absence of degree-one parity node 
+} 
+```
+Once detecting one of these errors, decoder constrcuts a `IncorrectCodingProof`.
+
+Encoding is done by feeding original symbols into peeling decoder.
 
 ### Block (block.rs)
-A relatively straight forward implementation of the data structure described above. A `block` is a rust `struct`. It implements the following traits:
-* ```From<&'static  str>```: this trait takes in a string and outputs a `block`. It is implemented via the `from` function which deserializes the received string into a `block` data structure. Read more about serialization [here](https://github.com/bitcoinbook/bitcoinbook/blob/develop/ch06.asciidoc#transaction-serializationoutputs) (in the context of transactions).
+Add a function `coded_merkle_roots` to construct CMT and its root hashes from transactions in the block.
 
-The `block` has a few methods of its own. The entirety of these are simple getter methods.
+Now include the CMT in the block:
+```rust 
+pub struct Block {
+	pub block_header: BlockHeader,
+	pub transactions: Vec<Transaction>,
+	pub coded_tree: Vec<Symbols>, //Coded Merkle tree constructed from the transactions in the block
+	pub block_size_in_bytes: usize, // size of transactions in the block, used to specify block size for tests
+}
+```
+
+Implement the Merkle proof of a symbol in the CMT in `merkle_proof`. Returned is a vector of symbols (and their respective indices), each of which is from a layer above the current layer.
 
 ### Block Header (block_header.rs)
-A relatively straight forward implementation of the data structure described above. A `block header` is a rust `struct`. It implements the following traits:
-* ```From<&'static  str>```: this trait takes in a string and outputs a `block`. It is implemented via the `from` function which deserializes the received string into a `block` data structure. Read more about serialization [here](https://github.com/bitcoinbook/bitcoinbook/blob/develop/ch06.asciidoc#transaction-serializationoutputs) (in the context of transactions).
-* `fmt::Debug`: this trait formats the `block header` struct for pretty printing the debug context -- ie it allows the programmer to print out the context of the struct in a way that makes it easier to debug. Once this trait is implemented, you can do:
+Now include the root hashes of CMT in the header:
 ```rust
-println!("{:?}", some_block_header);
-```
-Which will print out:
-```
-Block Header {
-    version: VERSION_VALUE,
-    previous_header_hash: PREVIOUS_HASH_HEADER_VALUE,
-    merkle_root_hash: MERKLE_ROOT_HASH_VALUE,
-    time: TIME_VALUE,
-    bits: BITS_VALUE,
-    nonce: NONCE_VALUE,
+pub struct BlockHeader {
+	pub version: u32,
+	pub previous_header_hash: H256,
+	pub merkle_root_hash: H256,
+	pub time: u32,
+	pub bits: Compact,
+	pub nonce: u32,
+	pub coded_merkle_roots_hashes: Vec<H256>,//hashes of the symbols on the top layer of coded Merkle tree
 }
 ```
-The `block header` only has a single method of its own, the `hash` method that returns a hash of itself.
+Add functions `verify_up` and `verify_base` to verify Merkle proof of a symbol in the CMT. 
+
 
 ### Constants (constants.rs)
-There are a few constants included in this crate. Since these are nicely documented, documenting them here would be redundant. [Here](https://doc.rust-lang.org/rust-by-example/custom_types/constants.html) you can read more about constants in rust.
+* `BLOCK_SIZE`: size of the transactions in a block
+* `BASE_SYMBOL_SIZE`: size of a symbol on the base layer in bytes
+* `AGGREGATE`: number of hashes to aggregate to form a new symbol on the upper layers of CMT
+* `RATE`: coding rate for code ensemble
+* `HEADER_SIZE`: number of hashes of coded symbols stored in the block header 
+* `NUMBER_ITERATION`: number of times to sample the base symbols of the CMT (for tests)
+
 
 ### Tests (main.rs)
+We test our coded Merkle tree (CMT) library using parmeters from reference designs.
 
+A reference design specifies:
+1. Blocksize(size of transactions), and symbol size on the base layer, hence we know # of systematic symbols k.
+2. Number of hashes to aggregate on higher layer of CMT
+3. Number of hashes in the block header.
+4. All codes on all levels of CMT
 
+For each reference, we have the following two tests:
+1. Stopping set test: randomly sample a subset of symbols on each layer of CMT, and see if we can decode the entire tree
+2. Incorrect-coding test: flip the bits of parity symbols after encoding, and use flipped symbols to construct CMT. Check if the decoder correctly generates the incorrect-coding proof.
 
-
-
+#### Reference LDPC codes
 Various reference LDPC codes are included in the LDPC_codes folder. Each code has a encode file and a decode file.
 
-
-
-### Read and Hash (read_and_hash.rs)
-This is a small file that deals with the reading and hashing of serialized data, utilizing a few nifty rust features. 
-
-First, a `HashedData` struct is defined over a generic T. Generics in rust work in a similar way to generics in other languages. If you need to brush up on generics, [read here](https://doc.rust-lang.org/1.8.0/book/generics.html). This data structure stores the data for a hashed value along with the size (length of the hash in bytes) and the original hash.
-
-Next the `ReadAndHash` trait is defined. Traits in rust define abstract behaviors that can be shared between many different types. For example, let's say I am writing some code about food. To do this, I might want to create an `Eatable` trait that has a method `eat` describing how to eat this food (borrowing an example from the [New Rustacean podcast](https://newrustacean.com/)). To do this, I would define the trait as follows:
-```rust
-pub trait Eatable {
-	fn eat(&self) -> String;
-}
-```
-Here I have defined a trait along with a method signature that must be implemented by any type that implements this trait. For example, let's say I define a candy type that is eatable:
-```rust
-struct Candy {
-   flavor: String,
-}
-
-impl Eatable for Candy {
-	fn eat(&self) -> String {
-    	format!("Unwrap candy and munch on that {} goodness.", &self.flavor)
-    }
-}
-
-// Create candy and eat it
-let candy = Candy { flavor: chocolate };
-prinln!("{}", candy.eat()); // "Unwrap candy and munch on that chocolate goodness."
-```
-
-Now let's take this one step further. Let's say we want to recreate Eatable so that the eat function returns a `Compost` type with generic T where presumably T is some type that is `Compostable` (another trait). Now here, it is important that we only return `Compostable` types because only `Compostable` foods can be made into Compost. Thus, we can recreate the `Eatable` trait, this time limiting what types can implement it to those that also implement the `Compostable` trait using the where keyword (note this is called a bounded trait):
-```rust
-pub trait Eatable {
-	fn eat<T>(&self) -> Compost<T> where T: Compostable;
-}
-
-pub trait Compostable {} // Here Compostable is a marker trait
-
-struct Compost<T> {
-	compostable_food: T,
-}
-
-impl<T> Compost<t> {
-	fn celebrate() {
-    	println!("Thank you for saving the earth!");
-    }
-}
-```
-So, let's now redefine `Candy`:
-```rust
-struct Candy {
-   flavor: String,
-}
-
-impl Compostable for Candy {}
-
-
-impl Eatable for Candy {
-	fn eat<T>(&self) -> Compost<T> where T: Compostable{
-    	Compost { compostable_food: format("A {} candy", &self.flavor) }
-    }
-}
-
-// Create candy and eat it
-let candy = Candy { flavor: chocolate };
-let compost = candy.eat();
-compost.celebrate(); // "Thank you for saving the earth!"
-```
-
-If this example doesn't quite make sense, I recommend checking out the [traits chapter](https://doc.rust-lang.org/book/second-edition/ch10-02-traits.html) in the Rust Book.
-
-Now that you understand traits, generics, and bounded traits, let's get back to `ReadAndHash`. This is a trait that implements a `read_and_hash<T>` method where T is `Deserializable`, hence it can be deserialized (which as you might guess is important since the input here is a serialized string). The output of this method is a Result (unfamiliar with Results in rust... [read more here](https://doc.rust-lang.org/std/result/)) returning the `HashedData` type described above.
-
-Finally, the `ReadAndHash` trait is implemented for the `Reader` type. You can read more about the `Reader` type in the serialization crate.
-
-### Transaction (transaction.rs)
-As described above, there are four structs related to transactions defined in this file:
-* OutPoint 
-* TransactionInput 
-* TransactionOutput 
-* Transaction 
-
-The implementations of these are pretty straight forward -- a majority of the defined methods are getters and each of these structs implements the `Serializable` and `Deserializable` traits.
-
-A few things to note:
-* The `HeapSizeOf` trait is implemented for `TransactionInput`, `TransactionOutput`, and `Transaction`. It has the method `heap_size_of_children` which calculates and returns the heap sizes of various struct fields.
-* The `total_spends` method on `Transaction` calculates the sum of all the outputs in a transaction.
-
-
-### Merkle Root (merkle_root.rs)
-The main function in this file is the function that calculates the merkle root (a filed on the block header struct). This function has two helper functions:
-* **concat**: takes two values and returns the concatenation of the two hashed values (512 bit)
-* **merkle_root_hash**: hashes the 512 bit hash of two concatenated values
-
-Using these two functions, the merkle root function takes a vector of values and calculates the merkle root row-by-row (a row being the level of a binary tree). Note, if there is an uneven number of values in the vector, the last value will be duplicated to create a full tree.
-
-### Indexed
-There are indexed equivalents of `block`, `block header`, and `transaction`:
-* indexed_block.rs
-* indexed_header.rs
-* indexed_transaction.rs
-
-These are essentially wrappers around the "raw" data structures with the following:
-* methods to convert to and from the raw data structures (i.e. block <-> indexed_block)
-* an equivalence method to compare equality against other indexed structures (specifically the PartialEq trait)
-* a deserialize method
