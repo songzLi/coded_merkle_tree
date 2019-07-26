@@ -28,6 +28,7 @@ use chain::coded_merkle_roots::{Symbols, SymbolBase, SymbolUp, coded_merkle_root
 use chain::merkle_root::merkle_root;
 use chain::decoder::{Code, Symbol, Decoder, TreeDecoder, CodingErr, IncorrectCodingProof};
 
+// obtain a code represented by symbols from the form represented by parities
 fn convert_parity_to_symbol(parities: Vec<Vec<u64>>, n: u64) -> Vec<Vec<u64>> {
 	let mut symbols: Vec<Vec<u64>> = vec![vec![];n as usize];
 	for i in 0..parities.len(){
@@ -125,8 +126,8 @@ fn main() {
 
 	//For each reference, we have the following two tests:
 	//1. Stopping set test: randomly sample a subset of symbols on each layer of CMT, and see if we can decode the entire tree
-	//2. Incorrect-coding test: replace coded symbols with random symbols, and check if the code correctly generates 
-	//   the incorrect-coding proof
+	//2. Incorrect-coding test: flip the bits of parity symbols after encoding, and use flipped symbols to construct CMT.
+    //Check if the decoder correctly generates the incorrect-coding proof.
 
 	//Initialize a block
 	//Initialize the block header
@@ -150,6 +151,7 @@ fn main() {
 
 	let transactions: Vec<Transaction> = vec![t.into();num_transactions as usize];
     
+    // number of systematic symbols for the codes on the four layers of CMT
     let k_set: Vec<u64> = vec![512, 256, 128, 64];
     let (codes_for_encoding, codes_for_decoding) = read_codes(k_set);
 
@@ -162,7 +164,7 @@ fn main() {
     //block decoding
     let num_samples = vec![1500, 1600, 1700, 1800, 1900, 2000];
     let mut successful_decoding_probability: Vec<f32> = vec![0.0;num_samples.len()];
-    for i in 0..NUMBER_ITERATION { //try over 1000 times, each time randomly takes num_samples symbols
+    for i in 0..NUMBER_ITERATION { //try over NUMBER_ITERATION times, each time randomly takes num_samples symbols
     	let decoding_results: Vec<Result<(), IncorrectCodingProof>> = test(&block, &num_samples, &codes_for_decoding); 
     	for j in 0..num_samples.len() {
     		match &decoding_results[j] {

@@ -134,6 +134,7 @@ def txt_to_sys_code(file_name):
     matrix_to_list(H_encode, H_decode)
 
 
-txt_to_sys_code('rawcode16384.txt')
-txt_to_sys_code('rawcode32768.txt')
-txt_to_sys_code('rawcode65536.txt')
+# txt_to_sys_code('newexample4.txt')
+# txt_to_sys_code('newexample16.txt')
+# txt_to_sys_code('newexample64.txt')
+txt_to_sys_code('newexample256.txt')
