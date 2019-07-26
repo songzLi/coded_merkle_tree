@@ -1,11 +1,11 @@
 # Chain
 
-In this crate, you will find the structures and functions that make up the blockchain, Bitcoin's core data structure.
+In this crate, we implement construction of _coded Merkle tree_ (CMT) for parity Bitcoin blocks.
 
-## Conceptual Overview
-Here we will dive deep into how the blockchain is created, organized, etc. as a preface for understanding the code in this crate.
+## Overview
+We add the following modules to impplement CMT.
 
-We will cover the following concepts:
+We modify the following modules of parity Bitcoin block to reflect the addition of CMT.
 * Blockchain
 * Block
 * Block Header
@@ -14,21 +14,7 @@ We will cover the following concepts:
 * Witnesses and SegWit
 * Coinbase
 
-### Blockchain
-So what is a blockchain? A blockchain is a *chain* of *blocks*...
 
-![mind blown gif](https://media.giphy.com/media/OK27wINdQS5YQ/giphy.gif)
-
-Yep, actually. 
-
-### Block
-The real question is, what is a [block](https://github.com/bitcoinbook/bitcoinbook/blob/develop/ch09.asciidoc#structure-of-a-block)?
-
-A block is a data structure with two fields:
-* **Block header:** a data structure containing the block's metadata
-* **Transactions:** an array ([vector](https://doc.rust-lang.org/book/second-edition/ch08-01-vectors.html) in rust) of transactions
-
-![Blockchain diagram](https://raw.githubusercontent.com/pluralsight/guides/master/images/8cd8b94f-d05f-41e8-a0f1-70853f390094.png)
 
 ### Block Header
 So what is a [block header](https://github.com/bitcoinbook/bitcoinbook/blob/develop/ch09.asciidoc#block-header)?
