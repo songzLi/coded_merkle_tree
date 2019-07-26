@@ -1,76 +1,24 @@
 # Chain
 
-In this crate, we implement construction of _coded Merkle tree_ (CMT) for parity Bitcoin blocks.
+In this crate, we implement _coded Merkle tree_ (CMT) for parity Bitcoin blocks.
 
 ## Overview
 We add the following modules to impplement CMT.
+* coded_merkle_roots
+* decoder
 
 We modify the following modules of parity Bitcoin block to reflect the addition of CMT.
-* Blockchain
-* Block
-* Block Header
-* Merkle Tree
-* Transaction
-* Witnesses and SegWit
-* Coinbase
+* block_header
+* block
+
+Various reference LDPC codes are included in the LDPC_codes folder. Each code has a encode file and a decode file.
+
+
+### `block_header.rs`
 
 
 
-### Block Header
-So what is a [block header](https://github.com/bitcoinbook/bitcoinbook/blob/develop/ch09.asciidoc#block-header)?
 
-A block header is a data structure with the following fields:
-* **Version:** indicates which set of block validation rules to follow
-* **Previous Header Hash:** a reference to the parent/previous block in the blockchain
-* **Merkle Root Hash:** a hash (root hash) of the merkle tree data structure containing a block's transactions
-* **Time:** a timestamp (seconds from Unix Epoch)
-* **Bits:** aka the difficulty target for this block
-* **Nonce:** value used in proof-of-work
-
-![Block header diagram](https://i.stack.imgur.com/BiaJK.png)
-
-*How are blocks chained together?* They are chained together via the backwards reference (previous header hash) present in the block header. Each block points backwards to its parent, all the way back to the [genesis block](https://github.com/bitcoinbook/bitcoinbook/blob/develop/ch09.asciidoc#the-genesis-block) (the first block in the Bitcoin blockchain that is hard coded into all clients).
-
-### Merkle Root
-*What is a Merkle Root?* A merkle root is the root of a merkle tree. As best stated in *Mastering Bitcoin*:
-
-> A _merkle tree_, also known as a _binary hash tree_, is a data
-> structure used for efficiently summarizing and verifying the integrity of large sets of data.
-
-In a merkle tree, all the data, in this case transactions, are leaves in the tree. Each of these is hashed and concatenated with its sibling... all the way up the tree until you are left with a single *root* hash (the merkle root hash). 
-
-![Merkle tree](https://upload.wikimedia.org/wikipedia/commons/9/95/Hash_Tree.svg)
-
-
-
-### Transaction
-According to [Mastering Bitcoin](https://github.com/bitcoinbook/bitcoinbook/) :
-
-> Transactions are the most important part of the bitcoin system. Everything else in bitcoin is designed to ensure that transactions can  created, propagated on the network, validated, and finally added to the global ledger of transactions (the blockchain).
-
-At its most basic level, a transaction is an encoded data structure that facilitates the transfer of value between two public key addresses on the Bitcoin blockchain.
-
-The most fundamental building block of a transaction is a `transaction output` -- the bitcoin you own in your "wallet" is in fact a subset of `unspent transaction outputs` or `UTXO's` of the global `UTXO set`. `UTXOs` are indivisible, discrete units of value which can only be consumed in their entirety. Thus, if I want to send you 1 BTC and I only own one `UTXO` worth 2 BTC, I would construct a transaction that spends my `UTXO` and sends 1 BTC to you and 1 BTC back to me (just like receiving change).
-
-**Transaction Output:** transaction outputs have two fields:
-* *value*: the value of a transaction
-* *scriptPubKey (aka locking script or witness script)*: conditions required to unlock (spend) a transaction value
-
-**Transaction Input:** transaction inputs have four fields:
-* *previous output*: the previous output transaction reference, as an OutPoint structure (see below)
-* *scriptSig*: a script satisfying the conditions set on the UTXO ([BIP16](https://github.com/bitcoin/bips/blob/master/bip-0016.mediawiki))
-* *scriptWitness*: a script satisfying the conditions set on the UTXO ([BIP141](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki))
-* *sequence number*: transaction version as defined by the sender. Intended for "replacement" of transactions when information is updated before inclusion into a block.
-
-**Outpoint**: 
-* *hash*: references the transaction that contains the UTXO being spent
-* *index*: identifies which UTXO from that transaction is referenced
-
-**Transaction Version:** the version of the data formatting
-
-**Transaction Locktime:** this specifies either a block number or a unix time at which this transaction is valid
-
-**Transaction Fee:** A transaction's input value must equal the transaction's output value or else the transaction is invalid. The difference between these two values is the transaction fee, a fee paid to the miner who includes this transaction in his/her block.
 
 ### Witnesses and SegWit
 
