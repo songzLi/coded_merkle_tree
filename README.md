@@ -12,5 +12,5 @@ A reference design specifies:
 4. All codes on all levels of CMT
 
 For each reference, we have the following two tests:
-1. Stopping set test: randomly sample a subset of symbols on each layer of CMT, and see if we can decode the entire tree
+1. Stopping set test: randomly sample a subset of symbols on each layer of CMT, and see if we can decode the entire tree.
 2. Incorrect-coding test: flip the bits of parity symbols after encoding, and use flipped symbols to construct CMT. Check if the decoder correctly generates the incorrect-coding proof.
