@@ -45,7 +45,7 @@ fn read_code_from_file(k: u64) -> (Code, Code) {
 	let n = ((k as f32) / RATE ) as u64;
 
 	//Read encoding matrix
-	let filename = String::from("src/LDPC_codes/k=") + &k.to_string() + &String::from("_encode.txt");
+	let filename = String::from("chain/src/LDPC_codes/k=") + &k.to_string() + &String::from("_encode.txt");
     // Open the file in read-only mode (ignoring errors).
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
@@ -59,7 +59,7 @@ fn read_code_from_file(k: u64) -> (Code, Code) {
     }
 
     //Read decodeing matrix
-    let filename = String::from("src/LDPC_codes/k=") + &k.to_string() + &String::from("_decode.txt");
+    let filename = String::from("chain/src/LDPC_codes/k=") + &k.to_string() + &String::from("_decode.txt");
     // Open the file in read-only mode (ignoring errors).
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
