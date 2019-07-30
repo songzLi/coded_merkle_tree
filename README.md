@@ -1,6 +1,6 @@
 # Coded Merkle Tree
 
-In this package, we implement _coded Merkle tree_ (CMT) for Parity Bitcoin client. The main functionalities of consructing and decoding a CMT are implemented in the chain crate. 
+In this package, we implement _coded Merkle tree_ (CMT) for Parity Bitcoin client. The main functionalities of constructing and decoding a CMT are implemented in the chain crate. 
 
 ## Tests (chain/src/main.rs)
 Run `cargo run` to test our coded Merkle tree (CMT) library using parmeters from reference designs.
