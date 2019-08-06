@@ -21,8 +21,8 @@ pub mod decoder;
 
 /// `IndexedBlock` extension
 pub mod read_and_hash;
-//mod indexed_block;
-//mod indexed_header;
+pub mod indexed_block;
+pub mod indexed_header;
 pub mod indexed_transaction;
 
 pub use primitives::{hash, bytes, bigint, compact};
@@ -36,8 +36,8 @@ pub use coded_merkle_roots::{Symbols, SymbolBase, SymbolUp};
 pub use transaction::{Transaction, TransactionInput, TransactionOutput, OutPoint};
 
 pub use read_and_hash::{ReadAndHash, HashedData};
-//pub use indexed_block::IndexedBlock;
-//pub use indexed_header::IndexedBlockHeader;
+pub use indexed_block::IndexedBlock;
+pub use indexed_header::IndexedBlockHeader;
 pub use indexed_transaction::IndexedTransaction;
 
 pub type ShortTransactionID = hash::H48;

@@ -7,6 +7,8 @@ use transaction::Transaction;
 use merkle_root::merkle_root;
 use indexed_header::IndexedBlockHeader;
 use indexed_transaction::IndexedTransaction;
+use constants::{BLOCK_SIZE, HEADER_SIZE};
+use bytes::Bytes;
 
 #[derive(Debug, Clone, Deserializable)]
 pub struct IndexedBlock {
@@ -38,7 +40,7 @@ impl IndexedBlock {
 	///
 	/// Hashes block header + transactions.
 	pub fn from_raw(block: Block) -> Self {
-		let Block { block_header, transactions } = block;
+		let Block { block_header, transactions, coded_tree, block_size_in_bytes} = block;
 		Self::new(
 			IndexedBlockHeader::from_raw(block_header),
 			transactions.into_iter().map(IndexedTransaction::from_raw).collect(),
@@ -50,7 +52,8 @@ impl IndexedBlock {
 	}
 
 	pub fn to_raw_block(self) -> Block {
-		Block::new(self.header.raw, self.transactions.into_iter().map(|tx| tx.raw).collect())
+		Block::new(self.header.raw, &self.transactions.into_iter().map(|tx| tx.raw).collect(), 
+			BLOCK_SIZE as usize, HEADER_SIZE, &vec![], vec![])
 	}
 
 	pub fn size(&self) -> usize {
